@@ -1,0 +1,7 @@
+# HVAC Lead Audit — URL Input File
+# Format: Business Name|Website URL|City|State
+# One business per line. Lines starting with # are ignored.
+#
+# Example:
+# Joe's HVAC|https://www.joeshvac.com|Dallas|TX
+# ComfortAir Solutions|https://comfortairsolutions.com|Phoenix|AZ
