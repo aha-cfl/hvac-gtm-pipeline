@@ -1,6 +1,16 @@
 {
   "camera_name": "TfL JamCam (replace with one from --list-tfl)",
   "image_url": "https://s3-eu-west-1.amazonaws.com/jamcams.tfl.gov.uk/00001.06514.jpg",
+  "style": "pixel",
+  "pixel": {
+    "width": 128,
+    "palette": "db16",
+    "colors": 16,
+    "dither": "ordered",
+    "dither_strength": 8,
+    "contrast": 1.15,
+    "saturation": 1.25
+  },
   "interval_seconds": 60,
   "timeout_seconds": 15,
   "image_scale": 0.92,

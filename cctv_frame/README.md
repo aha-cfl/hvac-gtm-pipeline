@@ -1,8 +1,17 @@
-# cctv_frame — Prototype 1: black-glass CCTV frame
+# cctv_frame — black-glass CCTV frame
 
 One public traffic camera, fullscreen, centered on pure black, refreshed every 60 s.
 If the feed fails, it keeps showing the last good image, and that image survives reboots.
-Pixelation and multi-camera rotation come in Prototype 2.
+
+**Two styles** (Prototype 2):
+
+| Style | Look | For |
+|---|---|---|
+| `pixel` (default) | Aseprite-style sprite art: 128 px wide, 16-color palette, crisp square pixels | Ambient art; also the privacy layer |
+| `real` | The camera image as-is | People who want the actual live view |
+
+Press **P** or **Space** to switch styles. The choice is saved, so it survives reboots.
+Which style shows is decided in this order: `--style` flag, then the last toggle on this device, then `style` in `config.json`.
 
 Private, non-commercial use only. TfL JamCams come under TfL's open-data terms,
 which require the attribution "Powered by TfL Open Data". Check any other source's terms before you add it.
@@ -33,6 +42,8 @@ python frame.py --list-tfl "Oxford"   # pick a camera, paste its imageUrl into c
 python frame.py                       # fullscreen; Esc to quit
 ```
 
+`python frame.py --preview any_photo.jpg` writes `cache/preview.png` with the two styles side by side, without any network. Use it to tune the pixel settings.
+
 `python frame.py --once` renders a single frame to `cache/latest.jpg` without opening a window. Use it to check a camera URL.
 
 ## Run on the Raspberry Pi
@@ -53,6 +64,12 @@ python frame.py                       # fullscreen; Esc to quit
 | Key | Default | Meaning |
 |---|---|---|
 | `image_url` | TfL JamCam | Direct JPEG snapshot URL |
+| `style` | `pixel` | Default style: `pixel` or `real` |
+| `pixel.width` | 128 | Art-canvas width. Lower = chunkier (96 = very sprite-like, 160 = more detail) |
+| `pixel.palette` | `db16` | `db16` (muted, painterly), `pico8` (saturated), `gameboy` (4 greens), `adaptive` (closest to the photo) |
+| `pixel.colors` | 16 | Palette size, used only by `adaptive` |
+| `pixel.dither` | `ordered` | `ordered` (Bayer pattern) or `none` (flat areas only) |
+| `pixel.dither_strength` | 8 | Above ~12, flat sky turns into a checkerboard |
 | `interval_seconds` | 60 | Fetch period. Most traffic cams update every 1–5 min, so faster is wasted |
 | `image_scale` | 0.92 | Share of the screen the image fills. The rest is black margin that the mat hides |
 | `brightness` | 0.85 | Dims the image so it reads as "behind glass" |
