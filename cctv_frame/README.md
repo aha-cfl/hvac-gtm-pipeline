@@ -39,12 +39,12 @@ Tools: utility knife, metal straightedge, tape measure, precision screwdrivers.
 cd cctv_frame
 pip install -r requirements.txt
 python frame.py --list-tfl "Oxford"   # pick a camera, paste its imageUrl into config.json
-python frame.py                       # fullscreen; Esc to quit
+python frame.py                       # fullscreen; P/Space toggles style, Esc quits
 ```
 
 `python frame.py --preview any_photo.jpg` writes `cache/preview.png` with the two styles side by side, without any network. Use it to tune the pixel settings.
 
-`python frame.py --once` renders a single frame to `cache/latest.jpg` without opening a window. Use it to check a camera URL.
+`python frame.py --once` renders a single frame to `cache/latest.png` without opening a window. Use it to check a camera URL.
 
 ## Run on the Raspberry Pi
 
