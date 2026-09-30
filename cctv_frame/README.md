@@ -7,7 +7,7 @@ If the feed fails, it keeps showing the last good image, and that image survives
 
 | Style | Look | For |
 |---|---|---|
-| `pixel` (default) | Aseprite-style sprite art: 128 px wide, 16-color palette, crisp square pixels | Ambient art; also the privacy layer |
+| `pixel` (default) | Aseprite-style sprite art: ~128 px wide, 16-color `city16` palette, crisp square pixels | Ambient art; also the privacy layer |
 | `real` | The camera image as-is | People who want the actual live view |
 
 Press **P** or **Space** to switch styles. The choice is saved, so it survives reboots.
@@ -46,6 +46,24 @@ python frame.py                       # fullscreen; P/Space toggles style, Esc q
 
 `python frame.py --once` renders a single frame to `cache/latest.png` without opening a window. Use it to check a camera URL.
 
+## Find cameras with Osiris
+
+[Osiris](https://github.com/simplifaisoul/osiris) aggregates ~17,000 public cameras behind `/api/cctv`. Use it as a **catalogue**, not a live dependency: pick cameras from it, then the frame fetches each agency's JPEG directly.
+
+```bash
+# in the osiris checkout
+npm install && npm run dev            # serves http://localhost:3000
+
+# in cctv_frame
+python frame.py --list-osiris --near 37.5665,126.978 --radius 5 --probe   # Seoul
+python frame.py --list-osiris --region uk --probe
+python frame.py --list-osiris --region texas --limit 50
+```
+
+Only still-image feeds are listed. HLS, YouTube, iframe and MJPEG streams are skipped. `--probe` fetches each listed feed and marks it `[OK]` only if it returns an image. Copy an `[OK]` URL into `image_url`.
+
+Osiris's own fetcher (`src/lib/stealthFetch.ts`) spoofs residential IPs and browser fingerprints. This frame does not: it sends one honest User-Agent at a 60 s interval. Keep it that way.
+
 ## Run on the Raspberry Pi
 
 1. Flash **Raspberry Pi OS (64-bit, with desktop)** with Raspberry Pi Imager. In its settings, set the hostname, Wi-Fi, and SSH.
@@ -66,7 +84,7 @@ python frame.py                       # fullscreen; P/Space toggles style, Esc q
 | `image_url` | TfL JamCam | Direct JPEG snapshot URL |
 | `style` | `pixel` | Default style: `pixel` or `real` |
 | `pixel.width` | 128 | Target art-canvas width; snapped so a whole-number upscale fills the same area as `real`. Lower = chunkier (96 = very sprite-like, 160 = more detail) |
-| `pixel.palette` | `db16` | `db16` (muted, painterly), `pico8` (saturated), `gameboy` (4 greens), `adaptive` (closest to the photo) |
+| `pixel.palette` | `city16` | `city16` (built for street cams: neutral grey ramp keeps roads grey), `db16` (muted, painterly; tints grey asphalt pink), `pico8` (saturated), `gameboy` (4 greens), `adaptive` (closest to the photo) |
 | `pixel.colors` | 16 | Palette size, used only by `adaptive` |
 | `pixel.dither` | `ordered` | `ordered` (Bayer pattern) or `none` (flat areas only) |
 | `pixel.dither_strength` | 8 | Above ~12, flat sky turns into a checkerboard |

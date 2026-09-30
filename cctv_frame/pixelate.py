@@ -19,6 +19,12 @@ PALETTES = {
         "ff004d", "ffa300", "ffec27", "00e436", "29adff", "83769c", "ff77a8", "ffccaa",
     ],
     "gameboy": ["0f380f", "306230", "8bac0f", "9bbc0f"],  # DMG green, 4 shades
+    "city16": [  # Built for street cams: 8-step grey ramp (cool shadows -> warm
+                 # highlights) so asphalt/concrete stay neutral, plus foliage,
+                 # sky/glass, brick, sodium-amber, brake-light red, taxi yellow.
+        "0e0f14", "22252e", "3a3e48", "575c66", "7a7f87", "a1a5aa", "c9cbcb", "eeeee6",
+        "34552f", "6f9447", "3f6a8f", "8fb6d0", "8a4b3a", "d49a3e", "d04648", "e3cf5b",
+    ],
 }
 
 # 4x4 Bayer matrix, values 0..15.
@@ -31,7 +37,7 @@ BAYER4 = [
 
 DEFAULTS = {
     "width": 128,           # art-canvas width in pixels; height follows aspect
-    "palette": "db16",      # db16 | pico8 | gameboy | adaptive
+    "palette": "city16",    # city16 | db16 | pico8 | gameboy | adaptive
     "colors": 16,           # only used by "adaptive"
     "dither": "ordered",    # ordered | none
     "dither_strength": 8,   # +/- RGB spread; >12 turns flat areas into checkerboard

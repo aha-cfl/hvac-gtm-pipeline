@@ -15,6 +15,7 @@ Usage:
     python frame.py --once              # fetch + render one frame to cache/, no GUI
     python frame.py --preview photo.jpg # real vs pixel side by side -> cache/preview.png
     python frame.py --list-tfl ABC      # list TfL JamCams whose name contains "ABC"
+    python frame.py --list-osiris --near 37.57,126.98 --probe   # cameras from a local Osiris
 """
 
 import argparse
@@ -236,6 +237,68 @@ def list_tfl(name_filter):
             print(f"{place['commonName']}\n    {props.get('imageUrl')}")
 
 
+NON_SNAPSHOT_HINTS = ("youtube.com", "youtu.be", "earthcam.com", "skylinewebcams.com",
+                      ".m3u8", ".mp4", ".html", "/embed")
+IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+
+
+def _km(lat1, lng1, lat2, lng2):
+    from math import asin, cos, radians, sin, sqrt
+    dlat, dlng = radians(lat2 - lat1), radians(lng2 - lng1)
+    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2
+    return 6371 * 2 * asin(sqrt(a))
+
+
+def _snapshot_kind(cam):
+    """'jpg' if the feed is a still image the frame can pull, else None."""
+    url = (cam.get("feed_url") or "").lower()
+    if not url.startswith("http") or cam.get("stream_type") in ("hls", "iframe", "mjpeg"):
+        return None
+    if any(h in url for h in NON_SNAPSHOT_HINTS):
+        return None
+    return "jpg" if url.split("?")[0].endswith(IMAGE_EXTS) or cam.get("stream_type") == "jpg" else "jpg?"
+
+
+def list_osiris(base_url, region=None, near=None, radius_km=25, limit=30, probe=False):
+    """Use a local Osiris instance as a camera catalogue; print still-image feeds.
+
+    The frame fetches the chosen feed_url directly from the agency, not through
+    Osiris, so it keeps working when Osiris is off and sends an honest User-Agent.
+    """
+    params = {}
+    if region:
+        params["region"] = region
+    elif near:
+        params.update(lat=near[0], lng=near[1], radius=radius_km)
+    resp = requests.get(base_url.rstrip("/") + "/api/cctv", params=params, timeout=90)
+    resp.raise_for_status()
+    body = resp.json()
+    cams = []
+    for cam in body.get("cameras", []):
+        kind = _snapshot_kind(cam)
+        if not kind:
+            continue
+        dist = _km(near[0], near[1], cam["lat"], cam["lng"]) if near else None
+        if dist is not None and dist > radius_km:
+            continue
+        cams.append((dist, kind, cam))
+    cams.sort(key=lambda t: (t[0] is None, t[0] or 0, t[1] != "jpg"))
+    if body.get("pendingRegions"):
+        print(f"# still loading in Osiris: {', '.join(body['pendingRegions'])} (re-run shortly)")
+    print(f"# {len(cams)} still-image cameras of {body.get('total', '?')} returned")
+    for dist, kind, cam in cams[:limit]:
+        if probe:
+            try:
+                r = requests.get(cam["feed_url"], timeout=10, headers={"User-Agent": USER_AGENT})
+                kind = "OK" if r.ok and r.headers.get("content-type", "").startswith("image/") \
+                    else f"FAIL {r.status_code} {r.headers.get('content-type', '')}"
+            except requests.RequestException as exc:
+                kind = f"FAIL {type(exc).__name__}"
+        where = f"{dist:5.1f} km" if dist is not None else cam.get("country", "")
+        print(f"[{kind}] {cam.get('name')} · {cam.get('city', '')} · {cam.get('source')} · {where}\n"
+              f"    {cam['feed_url']}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
     parser.add_argument("--config", default=str(HERE / "config.json"))
@@ -245,11 +308,25 @@ def main():
                         help="render a local image in both styles, no network")
     parser.add_argument("--list-tfl", nargs="?", const="", metavar="FILTER",
                         help="list available TfL JamCams (optionally filtered by name)")
+    parser.add_argument("--list-osiris", action="store_true",
+                        help="list still-image cameras from a running Osiris instance")
+    parser.add_argument("--osiris", default="http://localhost:3000", metavar="URL",
+                        help="Osiris base URL (default: %(default)s)")
+    parser.add_argument("--region", help="Osiris region, e.g. uk, texas, asia, hongkong")
+    parser.add_argument("--near", metavar="LAT,LNG", help="only cameras near this point")
+    parser.add_argument("--radius", type=float, default=25, help="km, with --near")
+    parser.add_argument("--limit", type=int, default=30)
+    parser.add_argument("--probe", action="store_true",
+                        help="with --list-osiris: fetch each listed feed to confirm it serves an image")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     if args.list_tfl is not None:
         list_tfl(args.list_tfl)
+        return
+    if args.list_osiris:
+        near = tuple(float(v) for v in args.near.split(",")) if args.near else None
+        list_osiris(args.osiris, args.region, near, args.radius, args.limit, args.probe)
         return
     CACHE_DIR.mkdir(exist_ok=True)
     cfg = load_config(args.config, need_url=not args.preview)

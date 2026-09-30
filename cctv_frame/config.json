@@ -4,7 +4,7 @@
   "style": "pixel",
   "pixel": {
     "width": 128,
-    "palette": "db16",
+    "palette": "city16",
     "colors": 16,
     "dither": "ordered",
     "dither_strength": 8,
