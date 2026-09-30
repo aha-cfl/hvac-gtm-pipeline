@@ -1,0 +1,59 @@
+{
+  "cameras": [
+    {
+      "id": "hk-aberdeen-h429f",
+      "name": "Aberdeen Praya Road, Fish Market",
+      "city": "Hong Kong",
+      "country": "HK",
+      "lat": 22.24845,
+      "lng": 114.1505,
+      "tz": "Asia/Hong_Kong",
+      "image_url": "https://tdcctv.data.one.gov.hk/H429F.JPG",
+      "source": "HK Transport Department (data.gov.hk)"
+    },
+    {
+      "id": "hk-west-kowloon-k110f",
+      "name": "West Kowloon Highway",
+      "city": "Hong Kong",
+      "country": "HK",
+      "lat": 22.3186,
+      "lng": 114.1682,
+      "tz": "Asia/Hong_Kong",
+      "image_url": "https://tdcctv.data.one.gov.hk/K110F.JPG",
+      "source": "HK Transport Department (data.gov.hk)"
+    },
+    {
+      "id": "hk-kwai-chung-k101f",
+      "name": "Kwai Chung Road / Container Port",
+      "city": "Hong Kong",
+      "country": "HK",
+      "lat": 22.3372,
+      "lng": 114.1542,
+      "tz": "Asia/Hong_Kong",
+      "image_url": "https://tdcctv.data.one.gov.hk/K101F.JPG",
+      "source": "HK Transport Department (data.gov.hk)"
+    },
+    {
+      "id": "nz-sh1-tinwald-714",
+      "name": "SH1 Tinwald",
+      "city": "Canterbury",
+      "country": "NZ",
+      "lat": -43.919632,
+      "lng": 171.721055,
+      "tz": "Pacific/Auckland",
+      "image_url": "https://trafficnz.info/camera/714.jpg",
+      "source": "NZTA (trafficnz.info)"
+    },
+    {
+      "id": "uk-london-jamcam",
+      "name": "London JamCam",
+      "city": "London",
+      "country": "UK",
+      "lat": 51.5074,
+      "lng": -0.1278,
+      "tz": "Europe/London",
+      "image_url": "https://s3-eu-west-1.amazonaws.com/jamcams.tfl.gov.uk/00001.06514.jpg",
+      "source": "TfL Open Data — replace with a URL from --list-tfl or --list-osiris --region uk --save"
+    }
+  ]
+}

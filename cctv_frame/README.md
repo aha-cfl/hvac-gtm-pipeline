@@ -1,17 +1,49 @@
-# cctv_frame — black-glass CCTV frame
+# cctv_frame — visual radio
 
-One public traffic camera, fullscreen, centered on pure black, refreshed every 60 s.
-If the feed fails, it keeps showing the last good image, and that image survives reboots.
+Tune into the sights of local life in other places. Radio lets you hear what a
+city is talking about; this lets you see it.
 
-**Two styles** (Prototype 2):
+Each **station** is a public camera. The frame shows one station fullscreen
+behind black glass, refreshed every 60 s.
+- **SCAN ☀** drifts between stations that are currently in daylight, one every 2 min.
+- **SCAN ALL** includes night stations.
+- **TUNED** holds one station.
 
-| Style | Look | For |
+Changing station plays a short burst of static, then a station ID (city, local time, day/night).
+
+| Style | Look | Night |
 |---|---|---|
-| `pixel` (default) | Aseprite-style sprite art: ~128 px wide, 16-color `city16` palette, crisp square pixels | Ambient art; also the privacy layer |
-| `real` | The camera image as-is | People who want the actual live view |
+| `real` (default) | The camera image, dimmed behind glass | As the camera sees it |
+| `pixel` | Aseprite-style sprite art, crisp square pixels | Switches automatically from `city16` to `night16` once the sun is 4° below the horizon at that camera |
 
-Press **P** or **Space** to switch styles. The choice is saved, so it survives reboots.
-Which style shows is decided in this order: `--style` flag, then the last toggle on this device, then `style` in `config.json`.
+Daylight is computed from each station's lat/lng and the current UTC time (`sun.py`).
+No time-zone database or network call is needed.
+
+### Controls (keyboard or touch)
+
+| Key | Tap | Action |
+|---|---|---|
+| S / Tab | tap anywhere | Open or close the station list (hides after 20 s) |
+| ← / → | — | Tune to the previous or next station |
+| ↑ / ↓, Enter | tap a station | Select a station and hold it (TUNED). Tap it again to resume scanning |
+| A | SCAN chips | Switch between SCAN ☀ and SCAN ALL |
+| P / Space | REAL/PIXEL chips | Switch picture style |
+| Esc | — | Close the list, then quit |
+
+Style, mode and the held station are saved in `cache/state.json`.
+Precedence: `--style` flag, then the last choice on this device, then `config.json`.
+
+### Stations (`playlist.json`)
+
+Each station has `name`, `city`, `lat`, `lng` and `image_url`. `tz` (IANA name, e.g. `Asia/Hong_Kong`) is optional; without it the local time shown is mean solar time (`~`).
+
+The starter list has Hong Kong Transport Department and NZTA open-data cameras, taken from Osiris's own source. They span 12+ time zones, but none have been verified live yet.
+
+- A station that fails once with nothing cached is skipped at once.
+- A station that fails twice is skipped even if it has a cached image.
+- Either kind gets another chance after 10 minutes.
+
+To add verified stations, see [Find cameras with Osiris](#find-cameras-with-osiris).
 
 Private, non-commercial use only. TfL JamCams come under TfL's open-data terms,
 which require the attribution "Powered by TfL Open Data". Check any other source's terms before you add it.
@@ -39,12 +71,12 @@ Tools: utility knife, metal straightedge, tape measure, precision screwdrivers.
 cd cctv_frame
 pip install -r requirements.txt
 python frame.py --list-tfl "Oxford"   # pick a camera, paste its imageUrl into config.json
-python frame.py                       # fullscreen; P/Space toggles style, Esc quits
+python frame.py                       # fullscreen visual radio; keys above, Esc quits
 ```
 
 `python frame.py --preview any_photo.jpg` writes `cache/preview.png` with the two styles side by side, without any network. Use it to tune the pixel settings.
 
-`python frame.py --once` renders a single frame to `cache/latest.png` without opening a window. Use it to check a camera URL.
+`python frame.py --once` renders a single frame to `cache/latest.png` without opening a window. Add `--sidebar` to include the station list, and `--at 2026-09-30T12:00Z` to render what the frame would show at that UTC time.
 
 ## Find cameras with Osiris
 
@@ -60,7 +92,9 @@ python frame.py --list-osiris --region uk --probe
 python frame.py --list-osiris --region texas --limit 50
 ```
 
-Only still-image feeds are listed. HLS, YouTube, iframe and MJPEG streams are skipped. `--probe` fetches each listed feed and marks it `[OK]` only if it returns an image. Copy an `[OK]` URL into `image_url`.
+Add `--save` to probe the listed cameras and append the ones marked `[OK]` to `playlist.json` as stations.
+
+Only still-image feeds are listed. HLS, YouTube, iframe and MJPEG streams are skipped. `--probe` fetches each listed feed and marks it `[OK]` only if it returns an image. 
 
 Osiris's own fetcher (`src/lib/stealthFetch.ts`) spoofs residential IPs and browser fingerprints. This frame does not: it sends one honest User-Agent at a 60 s interval. Keep it that way.
 
@@ -81,8 +115,13 @@ Osiris's own fetcher (`src/lib/stealthFetch.ts`) spoofs residential IPs and brow
 
 | Key | Default | Meaning |
 |---|---|---|
-| `image_url` | TfL JamCam | Direct JPEG snapshot URL |
-| `style` | `pixel` | Default style: `pixel` or `real` |
+| `image_url` | TfL JamCam | Used only if `playlist.json` is missing |
+| `style` | `real` | Default style: `real` or `pixel` |
+| `rotate_seconds` | 120 | Time on each station while scanning |
+| `station_id_seconds` | 5 | How long the station ID stays up after tuning |
+| `static_seconds` | 0.6 | Length of the static burst between stations |
+| `sidebar_timeout_seconds` | 20 | The station list hides after this long with no input |
+| `pixel.night_palette` | `night16` | Palette used in pixel mode when the station is in night |
 | `pixel.width` | 128 | Target art-canvas width; snapped so a whole-number upscale fills the same area as `real`. Lower = chunkier (96 = very sprite-like, 160 = more detail) |
 | `pixel.palette` | `city16` | `city16` (built for street cams: neutral grey ramp keeps roads grey), `db16` (muted, painterly; tints grey asphalt pink), `pico8` (saturated), `gameboy` (4 greens), `adaptive` (closest to the photo) |
 | `pixel.colors` | 16 | Palette size, used only by `adaptive` |

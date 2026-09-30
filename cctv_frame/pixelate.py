@@ -25,6 +25,12 @@ PALETTES = {
         "0e0f14", "22252e", "3a3e48", "575c66", "7a7f87", "a1a5aa", "c9cbcb", "eeeee6",
         "34552f", "6f9447", "3f6a8f", "8fb6d0", "8a4b3a", "d49a3e", "d04648", "e3cf5b",
     ],
+    "night16": [  # After dark: 8-step blue-violet ramp for sky and shadow, plus
+                  # the light sources that define a city at night: sodium
+                  # amber, warm window-white, brake red, neon cyan/magenta.
+        "05060a", "0c1020", "141a33", "1f2847", "2b3a5c", "3d5078", "5b6f94", "8595b0",
+        "c8cfdc", "f2e6c0", "ffb347", "e8743b", "d03a4a", "3fd0c9", "b04fd0", "2c3a2a",
+    ],
 }
 
 # 4x4 Bayer matrix, values 0..15.
