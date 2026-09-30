@@ -95,9 +95,12 @@ def render(img, cfg, style, width, height):
     """Render a camera image to a full-screen frame, letterboxed on pure black."""
     scale = cfg["image_scale"]
     if style == "pixel":
-        art = pixelate(img, cfg["pixel"])
         # Integer factor only: fractional nearest-neighbor makes uneven pixels.
-        factor = max(1, int(min(width * scale / art.width, height * scale / art.height)))
+        # Pick the factor nearest the requested art width, then size the art so
+        # factor * art fills the same box the real image would.
+        fit_w = min(width * scale, height * scale * img.width / img.height)
+        factor = max(1, round(fit_w / cfg["pixel"].get("width", 128)))
+        art = pixelate(img, {**cfg["pixel"], "width": int(fit_w // factor)})
         fitted = art.resize((art.width * factor, art.height * factor), Image.NEAREST)
     else:
         box = (max(1, int(width * scale)), max(1, int(height * scale)))

@@ -65,7 +65,7 @@ python frame.py                       # fullscreen; P/Space toggles style, Esc q
 |---|---|---|
 | `image_url` | TfL JamCam | Direct JPEG snapshot URL |
 | `style` | `pixel` | Default style: `pixel` or `real` |
-| `pixel.width` | 128 | Art-canvas width. Lower = chunkier (96 = very sprite-like, 160 = more detail) |
+| `pixel.width` | 128 | Target art-canvas width; snapped so a whole-number upscale fills the same area as `real`. Lower = chunkier (96 = very sprite-like, 160 = more detail) |
 | `pixel.palette` | `db16` | `db16` (muted, painterly), `pico8` (saturated), `gameboy` (4 greens), `adaptive` (closest to the photo) |
 | `pixel.colors` | 16 | Palette size, used only by `adaptive` |
 | `pixel.dither` | `ordered` | `ordered` (Bayer pattern) or `none` (flat areas only) |
