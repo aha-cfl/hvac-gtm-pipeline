@@ -1,5 +1,7 @@
 # cctv_frame — visual radio
 
+Built as a ladder of standalone prototypes. See [PROTOTYPES.md](PROTOTYPES.md); run any tier with `python frame.py --prototype 1|2|3`.
+
 Tune into the sights of local life in other places. Radio lets you hear what a
 city is talking about; this lets you see it.
 

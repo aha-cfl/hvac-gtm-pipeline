@@ -1,4 +1,5 @@
 {
+  "prototype": 3,
   "camera_name": "TfL JamCam (used only when playlist.json is missing)",
   "image_url": "https://s3-eu-west-1.amazonaws.com/jamcams.tfl.gov.uk/00001.06514.jpg",
   "style": "real",

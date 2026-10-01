@@ -243,7 +243,12 @@ class Controller:
     def __init__(self, cfg, cams, width, height, style, fetcher, state=None, time_offset=0.0):
         state = state or {}
         self.cfg, self.W, self.H, self.fetcher = cfg, width, height, fetcher
-        self.style = style
+        # Prototype tier (see PROTOTYPES.md): 1 = one camera, real only;
+        # 2 = one camera + style toggle; 3 = full visual radio.
+        self.level = int(cfg.get("prototype", 3))
+        if self.level < 3:
+            cams, state = cams[:1], {**state, "mode": "pinned", "pinned": None}
+        self.style = "real" if self.level == 1 else style
         self.rot = Rotator(cams, cfg["rotate_seconds"], state.get("mode", "auto"),
                            state.get("pinned"))
         self.selected = self.rot.index
@@ -265,6 +270,8 @@ class Controller:
     def _tuned(self, now, static=True):
         self.fetcher.set_camera(self.rot.current)
         self.selected = self.rot.index
+        if self.level < 3:  # a window, not a radio: no static, no station ID
+            return
         if static:
             self.static_until = now + self.cfg["static_seconds"]
         self.ident_until = now + self.cfg["static_seconds"] + self.cfg["station_id_seconds"]
@@ -287,6 +294,9 @@ class Controller:
     # --- input -------------------------------------------------------------
     def key(self, k, now):
         k = k.lower()
+        allowed = {1: ("escape",), 2: ("escape", "p", "space")}.get(self.level)
+        if allowed and k not in allowed:
+            return None
         when = self.when(now)
         n = len(self.rot.cams)
         if k in ("s", "tab"):
@@ -322,9 +332,19 @@ class Controller:
 
     def set_style(self, style):
         self.style = style
+        if self.level < 3:
+            try:  # keep the style choice, leave the radio's mode/station alone
+                save_state({**load_state(), "style": style})
+            except OSError:
+                pass
+            return
         self._save()
 
     def click(self, x, y, now):
+        if self.level == 2:
+            self.set_style("pixel" if self.style == "real" else "real")
+        if self.level < 3:
+            return
         self._touch(now)
         if not self.sidebar:
             self.sidebar = True
@@ -476,6 +496,8 @@ def main():
     parser.add_argument("--config", default=str(HERE / "config.json"))
     parser.add_argument("--playlist", default=str(PLAYLIST_PATH))
     parser.add_argument("--style", choices=STYLES, help="override config/saved style")
+    parser.add_argument("--prototype", type=int, choices=(1, 2, 3),
+                        help="run as prototype tier 1-3 (see PROTOTYPES.md); default: config")
     parser.add_argument("--once", action="store_true", help="render one frame, no GUI")
     parser.add_argument("--sidebar", action="store_true", help="with --once: show the sidebar")
     parser.add_argument("--at", help="with --once: pretend it is this UTC time (ISO 8601)")
@@ -511,6 +533,8 @@ def main():
     CACHE_DIR.mkdir(exist_ok=True)
     CAM_CACHE.mkdir(exist_ok=True)
     cfg = load_config(args.config)
+    if args.prototype:
+        cfg["prototype"] = args.prototype
     if args.preview:
         run_preview(cfg, args.preview)
         return
