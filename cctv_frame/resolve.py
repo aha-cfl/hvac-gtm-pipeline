@@ -17,6 +17,10 @@ and looked up again whenever it stops working:
 The camera whose name contains `name` wins (within `max_m`, default 1500 m);
 otherwise the nearest live camera within 400 m. A station's `stream_url`, if
 any, is the fallback when the lookup fails.
+
+A station with a fixed `stream_url` can also list `alternates` (nearby views
+of the same place). When the current stream fails, the next one takes over,
+so a single-view frame stays on air while one camera is down.
 """
 
 import logging
@@ -30,6 +34,7 @@ import requests
 log = logging.getLogger("cctv_frame.resolve")
 
 TTL_SECONDS = 600            # re-use a looked-up URL this long unless it fails first
+SWITCH_GAP_SECONDS = 20      # one failure burst moves to the next alternate only once
 ITS_URL = "https://openapi.its.go.kr:9443/cctvInfo"
 
 
@@ -70,14 +75,29 @@ class Resolver:
         self.osiris_url = osiris_url.rstrip("/")
         self.timeout = timeout
         self.specs = {c["id"]: c["resolve"] for c in cams if isinstance(c.get("resolve"), dict)}
-        self.fallback = {c["id"]: c["stream_url"] for c in cams
-                         if c.get("stream_type") == "hls" and c.get("stream_url")}
+        # Fixed URLs: the station's own stream first, then its alternates.
+        self.chains = {}
+        for c in cams:
+            if c.get("stream_type") == "hls" and c.get("stream_url"):
+                self.chains[c["id"]] = [(None, c["stream_url"])] + [
+                    (a.get("name"), a["stream_url"]) for a in c.get("alternates", []) if a.get("stream_url")]
+        self.pos = {}       # id -> index into its chain
+        self.switched = {}  # id -> time of the last alternate switch
         self.cache = {}  # id -> (url, looked_up_at)
         self.last = {}   # id -> last URL logged
         self.lock = threading.Lock()
 
     def has(self, cid):
-        return cid in self.specs or cid in self.fallback
+        return cid in self.specs or cid in self.chains
+
+    def _fixed(self, cid):
+        chain = self.chains.get(cid)
+        return chain[self.pos.get(cid, 0)][1] if chain else None
+
+    def view(self, cid):
+        """Name of the alternate view on air, or None for the station's own view."""
+        chain = self.chains.get(cid)
+        return chain[self.pos.get(cid, 0)][0] if chain else None
 
     def url(self, cid):
         """Current stream URL for a station (cached), or None."""
@@ -98,12 +118,19 @@ class Resolver:
                     log.info("%s: stream -> %s", cid, found[:100])
                     self.last[cid] = found
                 return found
-        return self.fallback.get(cid) or (hit[0] if hit else None)
+        return self._fixed(cid) or (hit[0] if hit else None)
 
     def invalidate(self, cid):
         """The URL stopped working (expired token, camera moved): look it up again next time."""
         with self.lock:
             self.cache.pop(cid, None)
+            chain = self.chains.get(cid)
+            now = time.time()
+            if cid not in self.specs and chain and len(chain) > 1 \
+                    and now - self.switched.get(cid, 0) > SWITCH_GAP_SECONDS:
+                self.pos[cid] = (self.pos.get(cid, 0) + 1) % len(chain)
+                self.switched[cid] = now
+                log.info("%s: switching to %s", cid, chain[self.pos[cid]][0] or "main view")
 
     def _lookup(self, spec):
         via = spec.get("via")

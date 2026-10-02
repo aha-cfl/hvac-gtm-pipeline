@@ -68,6 +68,32 @@ Tools: utility knife, metal straightedge, tape measure, precision screwdrivers.
 
 **Zero-hardware test first:** run it on your laptop (steps below). That proves the software before you buy anything.
 
+## One-view template (start here)
+
+One live view, playing continuously, as the working template for the frame:
+
+```bash
+cd cctv_frame
+pip install -r requirements.txt
+python web.py --one --check     # 1. confirm the stream answers ([OK] / [FAIL] + reason)
+python web.py --one --open      # 2. play it: http://localhost:8000
+```
+
+**The view:** Vrijthof, the main square in Maastricht (NL). It's a public webcam (webcam-maastricht.nl) on a fixed HLS address, so it needs no Osiris and no lookup. Defined in `stations/one-view.json`.
+- **Backup view:** Sint Servaasbrug, the river bridge 500 m away, on the same server. If Vrijthof's stream fails, the server switches to it, and the station ID reads "Sint Servaasbrug (backup view)".
+- **If both are down:** the screen shows NO SIGNAL over quiet static and retries every 30 s. It never goes black and never jumps elsewhere.
+- **Buffering:** a buffering stall shows static; a frozen picture re-tunes the same view.
+- **Controls:** P switches real/pixel (pixel art on the live video), M sound, F fullscreen. With one station the dial has nothing to scan, so it stays put.
+
+**Try any other single stream:**
+
+```bash
+python web.py --stream "https://.../playlist.m3u8" --name "Harbour" --city "Gdynia" \
+              --lat 54.48 --lng 18.56 --tz Europe/Warsaw --check      # then the same without --check, plus --open
+```
+
+Webcam streams like these belong to their operators: fine for a private prototype, not for a product (see PROTOTYPES.md licensing).
+
 ## Live video stations
 
 A station can be live video instead of (or as well as) a refreshing snapshot. Add these fields in `playlist.json`:

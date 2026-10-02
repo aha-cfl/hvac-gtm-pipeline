@@ -33,6 +33,12 @@
   #pic.pixel, #pix { image-rendering: pixelated; image-rendering: crisp-edges; }
   #embed { pointer-events: none; }  /* taps go to the radio, not the embedded player */
   #tuning { position: fixed; left: 6vw; top: 50%; color: #505258; font-size: 2.4vh; display: none; }
+  #nosignal { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center;
+    justify-content: center; gap: 1.2vh; pointer-events: none; text-shadow: 0 1px 3px #000; z-index: 1; }
+  #nosignal.on { display: flex; }
+  #nosignal .big { font-size: 4.2vh; letter-spacing: .3em; color: #c9cbcb; }
+  #nosignal .why { font-size: 2vh; color: #8a8c90; }
+  #static.on.dim { opacity: .4; }
 
   #static { position: fixed; inset: 0; width: 100%; height: 100%; image-rendering: pixelated;
     opacity: 0; pointer-events: none; }
@@ -84,6 +90,7 @@
   <iframe id="embed" class="media" allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin" title="Live camera"></iframe>
 </div>
 <div id="tuning">tuning…</div>
+<div id="nosignal"><div class="big">NO SIGNAL</div><div class="why"></div></div>
 <canvas id="static" width="160" height="90"></canvas>
 <div id="ident"><div class="city"></div><div class="sub"></div></div>
 
@@ -224,6 +231,7 @@
   }
   addEventListener("resize", () => { pixelizer.resize(); layout(); });
   function show(el) {
+    if (el) clearNoSignal();
     for (const m of [pic, vid, pix, embed]) m.classList.toggle("show", m === el);
     shown = el;
     $("#tuning").style.display = el ? "none" : "block";
@@ -319,7 +327,29 @@
     offlineUntil.set(st.id, Date.now() + 600e3);
     api.log("offline");
     if (mode !== "pinned" && eligible().length > 0 && step() !== idx) { tune(step(), "skip"); return; }
-    stopStatic(); show(null); renderList();
+    noSignal(st, seq);
+  }
+  // Nowhere else to tune (one-view frame, or a held station): stay on the
+  // station, hiss quietly, and try again every 30 s, the way a radio waits.
+  let noSignalTimer = 0;
+  function noSignal(st, seq) {
+    show(null); $("#tuning").style.display = "none";
+    if (!staticOn) startStatic();
+    sc.classList.add("dim");
+    $("#nosignal .why").textContent = `${st.city || st.name} · retrying every 30 s`;
+    $("#nosignal").classList.add("on");
+    renderList();
+    clearTimeout(noSignalTimer);
+    noSignalTimer = setTimeout(() => {
+      if (seq !== loadSeq) return;
+      offlineUntil.delete(st.id); st._liveFailed = false;
+      api.log("retry");
+      loadStation({ tuned: false });
+    }, 30000);
+  }
+  function clearNoSignal() {
+    clearTimeout(noSignalTimer);
+    if ($("#nosignal").classList.contains("on")) { $("#nosignal").classList.remove("on"); sc.classList.remove("dim"); stopStatic(); }
   }
   function loadImage(st, seq, tuned) {
     const want = style, im = new Image();
@@ -443,7 +473,8 @@
   function showIdent(st) {
     if (level < 3) return;
     const city = (st.city || st.country || st.name).toUpperCase();
-    const parts = [st.name.toUpperCase() !== city ? st.name : "", localTime(st), phase(st)].filter(Boolean);
+    const viewName = st.view ? `${st.view} (backup view)` : st.name;
+    const parts = [viewName.toUpperCase() !== city ? viewName : "", localTime(st), phase(st)].filter(Boolean);
     $("#ident .city").textContent = city;
     const sub = $("#ident .sub");
     sub.textContent = parts.join(" · ");
@@ -571,7 +602,11 @@
   // ---- clock ----
   setInterval(() => {
     const now = Date.now();
-    if (mode !== "pinned" && level >= 3 && now >= nextAt) tune(step(), "scan");
+    if (mode !== "pinned" && level >= 3 && now >= nextAt) {
+      const next = step();
+      if (next !== idx) tune(next, "scan");
+      else nextAt = now + (cfg.rotate_seconds || 120) * 1000;   // nothing else on the dial
+    }
     if (side.classList.contains("open")) { if (now > sidebarUntil) openSide(false); else renderList(); }
   }, 1000);
 

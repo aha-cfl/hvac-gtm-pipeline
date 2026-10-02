@@ -193,6 +193,38 @@ class HlsRelay:
         return url if ok else None
 
 
+def check_streams(cams, relay):
+    """Fetch each live station's playlist and first segment once; print the result."""
+    ok_all = True
+    for cam in cams:
+        if not relay.has(cam["id"]):
+            continue
+        url = relay.resolver.url(cam["id"])
+        label = f"{cam['name']} ({cam.get('city') or cam['id']})"
+        try:
+            r = requests.get(url, timeout=relay.timeout, headers={"User-Agent": USER_AGENT})
+            r.raise_for_status()
+            text = r.text
+            if not text.lstrip().startswith("#EXTM3U"):
+                raise ValueError("not an HLS playlist")
+            uris = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.startswith("#")]
+            if uris and uris[0].split("?")[0].endswith(".m3u8"):     # master -> media playlist
+                r = requests.get(urljoin(r.url, uris[0]), timeout=relay.timeout,
+                                 headers={"User-Agent": USER_AGENT})
+                r.raise_for_status()
+                uris = [ln.strip() for ln in r.text.splitlines() if ln.strip() and not ln.startswith("#")]
+            if not uris:
+                raise ValueError("playlist has no segments")
+            seg = requests.get(urljoin(r.url, uris[-1]), timeout=relay.timeout,
+                               headers={"User-Agent": USER_AGENT})
+            seg.raise_for_status()
+            print(f"[OK]   {label}: {len(seg.content) // 1024} KB segment  {url}")
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            ok_all = False
+            print(f"[FAIL] {label}: {exc}  {url}")
+    return ok_all
+
+
 def make_handler(cfg, stations, relay):
     public_cfg = {k: cfg[k] for k in ("style", "rotate_seconds", "interval_seconds",
                                       "station_id_seconds", "static_seconds",
@@ -270,6 +302,7 @@ def make_handler(cfg, stations, relay):
             kind = cam.get("stream_type")
             if relay.has(cid):
                 out["stream"] = {"type": "hls"}
+                out["view"] = relay.resolver.view(cid)
             elif kind in STREAM_TYPES and cam.get("stream_url"):
                 # HLS goes through the relay; embedded players load directly.
                 out["stream"] = {"type": kind} if kind == "hls" else \
@@ -343,6 +376,17 @@ def main():
     parser.add_argument("--open", action="store_true", help="open the page in the default browser")
     parser.add_argument("--config", default=str(HERE / "config.json"))
     parser.add_argument("--playlist", default=str(PLAYLIST_PATH))
+    parser.add_argument("--one", action="store_true",
+                        help="one-view template: play stations/one-view.json (Maastricht, Vrijthof)")
+    parser.add_argument("--stream", metavar="URL",
+                        help="play just this HLS stream (.m3u8) as a single station")
+    parser.add_argument("--name", default="Live view", help="with --stream: station name")
+    parser.add_argument("--city", default="", help="with --stream: city")
+    parser.add_argument("--lat", type=float, help="with --stream: latitude (for day/night)")
+    parser.add_argument("--lng", type=float, help="with --stream: longitude")
+    parser.add_argument("--tz", help="with --stream: IANA time zone, e.g. Europe/Amsterdam")
+    parser.add_argument("--check", action="store_true",
+                        help="test each live station's stream once, print the result, and exit")
     parser.add_argument("--osiris", default="http://localhost:3000", metavar="URL",
                         help="Osiris instance used to look up stations with \"resolve\": {\"via\": \"osiris\"}")
     args = parser.parse_args()
@@ -351,9 +395,15 @@ def main():
     CACHE_DIR.mkdir(exist_ok=True)
     CAM_CACHE.mkdir(exist_ok=True)
     cfg = load_config(args.config)
-    cams = load_playlist(args.playlist, cfg)
+    if args.stream:
+        cams = [{"id": "live", "name": args.name, "city": args.city, "lat": args.lat, "lng": args.lng,
+                 "tz": args.tz, "stream_url": args.stream, "stream_type": "hls"}]
+    else:
+        cams = load_playlist(str(HERE / "stations" / "one-view.json") if args.one else args.playlist, cfg)
     stations = Stations(cfg, cams)
     relay = HlsRelay(Resolver(cams, args.osiris, cfg["timeout_seconds"]), cfg["timeout_seconds"])
+    if args.check:
+        raise SystemExit(0 if check_streams(cams, relay) else 1)
     server = ThreadingHTTPServer((args.host, args.port), make_handler(cfg, stations, relay))
     shown = "localhost" if args.host in ("127.0.0.1", "0.0.0.0") else args.host
     url = f"http://{shown}:{args.port}"
