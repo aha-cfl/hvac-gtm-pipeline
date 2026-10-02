@@ -67,6 +67,38 @@ Tools: utility knife, metal straightedge, tape measure, precision screwdrivers.
 
 **Zero-hardware test first:** run it on your laptop (steps below). That proves the software before you buy anything.
 
+## Open it as a webpage (recommended)
+
+```bash
+cd cctv_frame
+pip install -r requirements.txt
+python web.py --open          # starts the server and opens http://localhost:8000
+```
+
+Everything works in the browser:
+- static between stations and the station ID;
+- the station list (S, or click anywhere);
+- ←/→ to tune, P for pixel, F for fullscreen.
+
+URL options:
+- `?prototype=1` / `?prototype=2` show lower tiers.
+- `?style=pixel` sets the starting style.
+
+Choices are remembered per browser. Tune, hold, style and mode events are appended to `cache/events.jsonl`, which is the data for the prototype tests.
+
+To control it from a phone on the same Wi-Fi: `python web.py --host 0.0.0.0`, then open `http://<computer-ip>:8000`.
+
+**On the frame computer (Raspberry Pi):** run the page full-screen with no browser bars. Add both lines to `~/.config/labwc/autostart`:
+
+```bash
+python3 $HOME/hvac-gtm-pipeline/cctv_frame/web.py &
+chromium-browser --kiosk --noerrdialogs --disable-infobars --incognito http://localhost:8000 &   # "chromium" on newer images
+```
+
+On Windows or macOS, use Chrome or Edge with `--kiosk http://localhost:8000`, or press F on the page.
+
+The web version replaces the Tk window (`frame.py`). That remains for headless renders (`--once`, `--preview`) and camera discovery.
+
 ## Run on a laptop (Windows/macOS/Linux)
 
 ```bash

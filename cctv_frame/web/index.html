@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visual Radio</title>
+<style>
+  :root {
+    --bg: #000;
+    --ink: #e8e8e2;
+    --dim: #84868b;
+    --faint: #4a4c52;
+    --line: #26282e;
+    --accent: #e3cf5b;
+    --off: #d04648;
+    --panel: rgba(4, 5, 7, 0.88);
+    --chip-on: #2e3036;
+  }
+  /* The frame is always black glass; dark and light schemes share the same tokens. */
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #000; } }
+  :root[data-theme="dark"] { --bg: #000; }
+
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden;
+    font-family: "DejaVu Sans", "Segoe UI", system-ui, sans-serif; color: var(--ink);
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  body.idle, body.idle * { cursor: none !important; }
+
+  #stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #pic { display: block; filter: brightness(var(--bright, 0.85)); }
+  #pic.pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
+  #tuning { position: fixed; left: 6vw; top: 50%; color: #505258; font-size: 2.4vh; display: none; }
+
+  #static { position: fixed; inset: 0; width: 100%; height: 100%; image-rendering: pixelated;
+    opacity: 0; pointer-events: none; }
+  #static.on { opacity: 1; }
+
+  #ident { position: fixed; left: 6vw; bottom: 9vh; opacity: 0; pointer-events: none;
+    transition: opacity 1s ease; text-shadow: 0 1px 2px #000, 0 2px 8px #000; }
+  #ident.on { opacity: 1; transition: opacity .3s ease; }
+  #ident .city { font-size: 5vh; letter-spacing: .04em; }
+  #ident .sub { font-size: 2.4vh; color: #a2a4a8; margin-top: .6vh; }
+
+  #side { position: fixed; top: 0; right: 0; bottom: 0; width: max(300px, 34vw); max-width: 100vw;
+    box-sizing: border-box; padding: 2.6vh 3vh; display: flex; flex-direction: column;
+    background: var(--panel); border-left: 1px solid var(--line);
+    transform: translateX(100%); transition: transform .25s ease; }
+  #side.open { transform: none; }
+  .label { font-size: max(11px, 1.9vh); color: var(--dim); letter-spacing: .08em; }
+  .chips { display: flex; flex-wrap: wrap; gap: .8vh; margin-top: 1.4vh; }
+  .chip { font: inherit; font-size: max(12px, 2vh); color: var(--dim); background: none;
+    border: 1px solid var(--faint); border-radius: 6px; padding: .6vh 1.2vh; cursor: pointer; }
+  .chip.on { color: var(--ink); background: var(--chip-on); border-color: #5a5c62; }
+  hr { border: 0; border-top: 1px solid var(--faint); margin: 2vh 0 1vh; }
+  #list { flex: 1; overflow-y: auto; margin: 0 -3vh; scrollbar-width: none; }
+  #list::-webkit-scrollbar { display: none; }
+  .st { position: relative; padding: 1.1vh 3vh; cursor: pointer; }
+  .st.sel { background: #1c1e24; }
+  .st.cur::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--accent); }
+  .st .name { font-size: max(13px, 2.4vh); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 3vh; }
+  .st .sub { font-size: max(11px, 1.9vh); color: var(--dim); margin-top: .3vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .st .glyph { position: absolute; right: 3vh; top: 1vh; font-size: max(14px, 2.5vh); color: var(--dim); }
+  .st .glyph.day { color: var(--accent); }
+  .st.muted .name { color: var(--dim); }
+  .st.dead .sub { color: var(--off); }
+  #foot { border-top: 1px solid var(--faint); padding-top: 1.2vh; }
+  #status { font-size: max(11px, 1.9vh); color: var(--dim); }
+  #hints { font-size: max(10px, 1.7vh); color: var(--faint); margin-top: .6vh; }
+  @media (max-width: 600px) { #side { width: 100vw; } }
+</style>
+</head>
+<body>
+<div id="stage"><img id="pic" alt=""></div>
+<div id="tuning">tuning…</div>
+<canvas id="static" width="160" height="90"></canvas>
+<div id="ident"><div class="city"></div><div class="sub"></div></div>
+
+<aside id="side" aria-label="Stations">
+  <div class="label">VISUAL RADIO</div>
+  <div class="chips" id="modes">
+    <button class="chip" data-mode="auto">SCAN ☀</button>
+    <button class="chip" data-mode="all">SCAN ALL</button>
+    <button class="chip" data-mode="pinned">TUNED</button>
+  </div>
+  <div class="chips" id="styles">
+    <button class="chip" data-style="real">REAL</button>
+    <button class="chip" data-style="pixel">PIXEL</button>
+  </div>
+  <hr>
+  <div id="list"></div>
+  <div id="foot">
+    <div id="status"></div>
+    <div id="hints">←→ tune · ↑↓ select · ⏎ hold · A scan · P style · S hide · F fullscreen</div>
+  </div>
+</aside>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const DEMO = window.VR_DEMO || null;           // sample-frame build (no server)
+  const qs = new URLSearchParams(location.search);
+
+  // ---- persisted per-device choices (localStorage can throw or be empty) ----
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("vr." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("vr." + k, JSON.stringify(v)); } catch {} },
+  };
+
+  // ---- sun (same NOAA approximation as sun.py) ----
+  const R = Math.PI / 180;
+  function elevation(lat, lng, d) {
+    const h = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+    const doy = Math.floor((d - Date.UTC(d.getUTCFullYear(), 0, 1)) / 864e5) + 1;
+    const g = 2 * Math.PI / 365 * (doy - 1 + (h - 12) / 24);
+    const eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g)
+      - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+    const de = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g)
+      + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
+    const ha = ((h * 60 + eq + 4 * lng) / 4 - 180) * R, la = lat * R;
+    const c = Math.sin(la) * Math.sin(de) + Math.cos(la) * Math.cos(de) * Math.cos(ha);
+    return 90 - Math.acos(Math.max(-1, Math.min(1, c))) / R;
+  }
+  function phase(st, d = new Date()) {
+    if (st.lat == null || st.lng == null) return "day";
+    const e = elevation(st.lat, st.lng, d);
+    return e >= 6 ? "day" : e >= -4 ? "dusk" : "night";
+  }
+  function localTime(st, d = new Date()) {
+    if (st.tz) {
+      try { return new Intl.DateTimeFormat("en-GB", { timeZone: st.tz, hour: "2-digit", minute: "2-digit", hour12: false }).format(d); } catch {}
+    }
+    if (st.lng == null) return "";
+    const s = new Date(d.getTime() + st.lng / 15 * 3600e3);
+    return "~" + String(s.getUTCHours()).padStart(2, "0") + ":" + String(s.getUTCMinutes()).padStart(2, "0");
+  }
+  const GLYPH = { day: "☀", dusk: "◐", night: "☾" };
+
+  // ---- data source: local server, or embedded sample frames ----
+  const api = {
+    async stations() {
+      if (DEMO) return DEMO;
+      const r = await fetch("/api/stations", { cache: "no-store" });
+      if (!r.ok) throw new Error("stations " + r.status);
+      return r.json();
+    },
+    frameUrl(st, style) {
+      if (DEMO) {
+        const f = DEMO.frames[st.id];
+        return style === "pixel" ? (phase(st) === "night" ? f.pixelNight : f.pixel) : f.real;
+      }
+      // The page's clock decides day/night so the palette always matches the station ID.
+      return `/api/frame/${encodeURIComponent(st.id)}?style=${style}&phase=${phase(st)}&t=${Date.now()}`;
+    },
+    log(type, extra = {}) {
+      if (DEMO) return;
+      const st = stations[idx];
+      const body = JSON.stringify({ type, station: st && st.id, style, mode, ...extra });
+      fetch("/api/event", { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => {});
+    },
+  };
+
+  // ---- state ----
+  let cfg = {}, stations = [], idx = 0, sel = 0, level = 3;
+  let style = "real", mode = "auto", nextAt = 0, sidebarUntil = 0;
+  const offlineUntil = new Map();               // id -> ms timestamp
+  const pic = $("#pic"), side = $("#side");
+
+  const isOffline = (st) => (offlineUntil.get(st.id) || 0) > Date.now() || (st.offline && !DEMO);
+  function eligible() {
+    let live = stations.map((_, i) => i).filter((i) => !isOffline(stations[i]));
+    if (!live.length) live = stations.map((_, i) => i);
+    if (mode === "auto") {
+      const lit = live.filter((i) => phase(stations[i]) !== "night");
+      return lit.length ? lit : live;
+    }
+    return live;
+  }
+  function step(dir = 1) {
+    const pool = eligible(), n = stations.length;
+    for (let k = 1; k <= n; k++) {
+      const i = ((idx + dir * k) % n + n) % n;
+      if (pool.includes(i)) return i;
+    }
+    return pool[0];
+  }
+  function save() {
+    if (level < 3) return;   // lower prototype tiers never overwrite the radio's choices
+    store.set("style", style);
+    store.set("mode", mode);
+    store.set("pinned", mode === "pinned" ? stations[idx].id : null);
+  }
+
+  // ---- picture ----
+  function sizePic() {
+    const w = pic.naturalWidth, h = pic.naturalHeight;
+    if (!w || !h) return;
+    const scale = cfg.image_scale || 0.92;
+    const bw = innerWidth * scale, bh = innerHeight * scale;
+    let k = Math.min(bw / w, bh / h);
+    if (pic.classList.contains("pixel")) k = Math.max(1, Math.floor(k)); // whole-number upscale keeps pixels square
+    pic.style.width = Math.round(w * k) + "px";
+    pic.style.height = Math.round(h * k) + "px";
+  }
+  addEventListener("resize", sizePic);
+
+  let loadSeq = 0;
+  function loadFrame({ tuned = false } = {}) {
+    const st = stations[idx], seq = ++loadSeq, want = style;
+    const im = new Image();
+    im.onload = () => {
+      if (seq !== loadSeq) return;
+      pic.classList.toggle("pixel", want === "pixel");
+      pic.src = im.src;
+      $("#tuning").style.display = "none";
+      if (pic.complete) sizePic(); else pic.onload = sizePic;
+      if (tuned) endStatic(st);
+    };
+    im.onerror = () => {
+      if (seq !== loadSeq) return;
+      offlineUntil.set(st.id, Date.now() + 600e3);
+      api.log("offline");
+      if (mode !== "pinned" && eligible().length > 0 && step() !== idx) {
+        tune(step(), "skip");
+      } else {
+        stopStatic();
+        pic.removeAttribute("src");
+        $("#tuning").style.display = "block";
+        renderList();
+      }
+    };
+    im.src = api.frameUrl(st, want);
+  }
+
+  // ---- static + station ID ----
+  const sc = $("#static"), sctx = sc.getContext("2d");
+  let staticOn = false, staticStart = 0;
+  function drawNoise() {
+    if (!staticOn) return;
+    const img = sctx.createImageData(sc.width, sc.height);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = Math.pow(Math.random(), 2.2) * 150;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+    }
+    sctx.putImageData(img, 0, 0);
+    requestAnimationFrame(drawNoise);
+  }
+  function startStatic() {
+    if (staticOn) { staticStart = Date.now(); return; }
+    staticOn = true; staticStart = Date.now();
+    sc.classList.add("on"); drawNoise();
+  }
+  function stopStatic() { staticOn = false; sc.classList.remove("on"); }
+  function endStatic(st) {
+    const left = (cfg.static_seconds || 0.6) * 1000 - (Date.now() - staticStart);
+    setTimeout(() => { stopStatic(); showIdent(st); }, Math.max(0, left));
+  }
+  let identTimer = 0;
+  function showIdent(st) {
+    if (level < 3) return;
+    const city = (st.city || st.country || st.name).toUpperCase();
+    const parts = [st.name.toUpperCase() !== city ? st.name : "", localTime(st), phase(st)].filter(Boolean);
+    $("#ident .city").textContent = city;
+    $("#ident .sub").textContent = parts.join(" · ");
+    $("#ident").classList.add("on");
+    clearTimeout(identTimer);
+    identTimer = setTimeout(() => $("#ident").classList.remove("on"), (cfg.station_id_seconds || 5) * 1000);
+  }
+
+  function tune(i, source = "tune") {
+    idx = ((i % stations.length) + stations.length) % stations.length;
+    sel = idx;
+    nextAt = Date.now() + (cfg.rotate_seconds || 120) * 1000;
+    if (level >= 3) startStatic();
+    loadFrame({ tuned: level >= 3 });
+    save(); renderList();
+    api.log("tune", { source });
+  }
+
+  // ---- sidebar ----
+  function renderList() {
+    document.querySelectorAll("#modes .chip").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
+    document.querySelectorAll("#styles .chip").forEach((b) => b.classList.toggle("on", b.dataset.style === style));
+    if (!side.classList.contains("open")) return;
+    const pool = new Set(eligible()), now = new Date(), list = $("#list");
+    list.replaceChildren(...stations.map((st, i) => {
+      const ph = phase(st, now), dead = isOffline(st);
+      const row = document.createElement("div");
+      row.className = "st" + (i === idx ? " cur" : "") + (i === sel ? " sel" : "")
+        + (pool.has(i) && !dead ? "" : " muted") + (dead ? " dead" : "");
+      const name = document.createElement("div"); name.className = "name"; name.textContent = st.name;
+      const sub = document.createElement("div"); sub.className = "sub";
+      sub.textContent = [st.city || st.country, localTime(st, now), dead ? "offline" : ph].filter(Boolean).join(" · ");
+      const g = document.createElement("div"); g.className = "glyph " + ph; g.textContent = GLYPH[ph];
+      row.append(name, sub, g);
+      row.addEventListener("click", (e) => { e.stopPropagation(); touch(); sel = i; hold(i); });
+      return row;
+    }));
+    list.children[sel]?.scrollIntoView({ block: "nearest" });
+    const left = Math.max(0, Math.round((nextAt - Date.now()) / 1000));
+    $("#status").textContent = mode === "pinned" ? "tuned · holding this station"
+      : `scanning · next station in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+  }
+  function openSide(open) {
+    side.classList.toggle("open", open);
+    if (open) { touch(); renderList(); api.log("sidebar"); }
+  }
+  function touch() { sidebarUntil = Date.now() + (cfg.sidebar_timeout_seconds || 20) * 1000; }
+
+  function hold(i) {
+    if (mode === "pinned" && i === idx) { setMode("auto"); return; }   // tapping the held station releases it
+    mode = "pinned";
+    tune(i, "hold");
+    api.log("hold");
+  }
+  function setMode(m) {
+    if (m === "pinned") { if (mode !== "pinned") hold(idx); return; }
+    mode = m; nextAt = Date.now() + (cfg.rotate_seconds || 120) * 1000;
+    api.log("mode");
+    if (m === "auto" && !eligible().includes(idx)) tune(step(), "scan");
+    save(); renderList();
+  }
+  function setStyle(s) {
+    style = s; save(); api.log("style");
+    loadFrame(); renderList();
+  }
+  document.querySelectorAll("#modes .chip").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); touch(); setMode(b.dataset.mode); }));
+  document.querySelectorAll("#styles .chip").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); touch(); setStyle(b.dataset.style); }));
+
+  // ---- input ----
+  const ALLOWED = { 1: ["escape", "f"], 2: ["escape", "f", "p", " "] };
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (ALLOWED[level] && !ALLOWED[level].includes(k)) return;
+    let handled = true;
+    if (k === "s" || k === "tab") openSide(!side.classList.contains("open"));
+    else if (k === "arrowup" || k === "arrowdown") {
+      if (!side.classList.contains("open")) openSide(true);
+      sel = (sel + (k === "arrowdown" ? 1 : -1) + stations.length) % stations.length; renderList();
+    }
+    else if (k === "enter") hold(sel);
+    else if (k === "arrowleft" || k === "arrowright") tune(idx + (k === "arrowright" ? 1 : -1), "dial");
+    else if (k === "a") setMode(mode === "auto" ? "all" : "auto");
+    else if (k === "p" || k === " ") setStyle(style === "real" ? "pixel" : "real");
+    else if (k === "f") { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.(); }
+    else if (k === "escape") openSide(false);
+    else handled = false;
+    if (handled) { e.preventDefault(); touch(); }
+  });
+  side.addEventListener("click", (e) => { e.stopPropagation(); touch(); });
+  addEventListener("click", () => {
+    if (level === 1) return;
+    if (level === 2) { setStyle(style === "real" ? "pixel" : "real"); return; }
+    openSide(!side.classList.contains("open"));
+  });
+  let idleTimer = 0;
+  addEventListener("pointermove", () => {
+    document.body.classList.remove("idle");
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => document.body.classList.add("idle"), 3000);
+  });
+
+  // ---- clock ----
+  setInterval(() => {
+    const now = Date.now();
+    if (mode !== "pinned" && level >= 3 && now >= nextAt) tune(step(), "scan");
+    if (side.classList.contains("open")) { if (now > sidebarUntil) openSide(false); else renderList(); }
+  }, 1000);
+
+  // ---- boot ----
+  async function refreshStations() {
+    try {
+      const data = await api.stations();
+      const curId = stations[idx]?.id;
+      cfg = data.config || {};
+      stations = level < 3 ? data.stations.slice(0, 1) : data.stations;
+      const i = stations.findIndex((s) => s.id === curId);
+      if (i >= 0) idx = i;
+      return true;
+    } catch (err) {
+      $("#tuning").textContent = "can't reach the visual radio server — is web.py running?";
+      $("#tuning").style.display = "block";
+      return false;
+    }
+  }
+  (async () => {
+    if (!(await refreshStations()) || !stations.length) return;
+    level = +(qs.get("prototype") || cfg.prototype || 3);
+    if (level < 3) stations = stations.slice(0, 1);
+    document.documentElement.style.setProperty("--bright", cfg.brightness ?? 0.85);
+    style = qs.get("style") || (level === 1 ? "real" : store.get("style", cfg.style || "real"));
+    mode = level < 3 ? "pinned" : store.get("mode", "auto");
+    const pinned = store.get("pinned", null);
+    const pi = stations.findIndex((s) => s.id === pinned);
+    idx = mode === "pinned" && pi >= 0 ? pi : 0;
+    if (mode === "pinned" && pi < 0) mode = level < 3 ? "pinned" : "auto";
+    if (mode === "auto" && !eligible().includes(idx)) idx = step();
+    tune(idx, "boot");
+    setInterval(() => { loadFrame(); }, (cfg.interval_seconds || 60) * 1000);   // refresh the picture
+    setInterval(refreshStations, 60e3);                                          // offline flags
+  })();
+})();
+</script>
+</body>
+</html>
