@@ -37,6 +37,7 @@ from frame import (CACHE_DIR, CAM_CACHE, HERE, PLAYLIST_PATH, USER_AGENT, fetch_
                    load_config)
 from pixelate import DEFAULTS as PIXEL_DEFAULTS, PALETTES, pixelate
 from playlist import cam_phase, load_playlist
+from resolve import Resolver
 
 WEB_DIR = HERE / "web"
 EVENTS_PATH = CACHE_DIR / "events.jsonl"
@@ -141,16 +142,22 @@ class HlsRelay:
     followed, so the relay can't be pointed at arbitrary sites.
     """
 
-    def __init__(self, cams, timeout):
+    def __init__(self, resolver, timeout):
         self.timeout = timeout
-        self.streams = {c["id"]: c["stream_url"] for c in cams
-                        if c.get("stream_type") == "hls" and c.get("stream_url")}
-        self.allowed = {cid: {urlsplit(u).netloc} for cid, u in self.streams.items()}
+        self.resolver = resolver
+        self.allowed = {}  # id -> hosts this station's stream may use
         self.lock = threading.Lock()
+
+    def has(self, cid):
+        return self.resolver.has(cid)
+
+    def expired(self, cid):
+        """Upstream refused (token expired, camera moved): look the stream up again."""
+        self.resolver.invalidate(cid)
 
     def _proxied(self, cid, url):
         with self.lock:
-            self.allowed[cid].add(urlsplit(url).netloc)
+            self.allowed.setdefault(cid, set()).add(urlsplit(url).netloc)
         return f"/api/hls/{cid}/{_b64e(url)}"
 
     def rewrite(self, cid, text, base):
@@ -168,16 +175,21 @@ class HlsRelay:
 
     def resolve(self, cid, token):
         """Upstream URL for a request, or None if not allowed."""
-        if cid not in self.streams:
+        if not self.resolver.has(cid):
             return None
         if token == "master":
-            return self.streams[cid]
+            url = self.resolver.url(cid)
+            if url:
+                with self.lock:
+                    self.allowed.setdefault(cid, set()).add(urlsplit(url).netloc)
+            return url
         try:
             url = _b64d(token)
         except (ValueError, UnicodeDecodeError):
             return None
         with self.lock:
-            ok = urlsplit(url).scheme in ("http", "https") and urlsplit(url).netloc in self.allowed[cid]
+            ok = (urlsplit(url).scheme in ("http", "https")
+                  and urlsplit(url).netloc in self.allowed.get(cid, ()))
         return url if ok else None
 
 
@@ -256,7 +268,9 @@ def make_handler(cfg, stations, relay):
             out["offline"] = stations.offline(cid) if cam.get("image_url") else False
             out["has_image"] = bool(cam.get("image_url"))
             kind = cam.get("stream_type")
-            if kind in STREAM_TYPES and cam.get("stream_url"):
+            if relay.has(cid):
+                out["stream"] = {"type": "hls"}
+            elif kind in STREAM_TYPES and cam.get("stream_url"):
                 # HLS goes through the relay; embedded players load directly.
                 out["stream"] = {"type": kind} if kind == "hls" else \
                     {"type": kind, "url": cam["stream_url"]}
@@ -265,6 +279,8 @@ def make_handler(cfg, stations, relay):
         def _relay(self, cid, token):
             upstream = relay.resolve(cid, token)
             if upstream is None:
+                if token == "master" and relay.has(cid):
+                    return self._json({"error": "no live stream found for this station"}, 503)
                 return self._json({"error": "not allowed"}, 403)
             headers = {"User-Agent": USER_AGENT}
             if self.headers.get("Range"):
@@ -273,11 +289,14 @@ def make_handler(cfg, stations, relay):
                 r = requests.get(upstream, headers=headers, timeout=relay.timeout, stream=True)
             except requests.RequestException as exc:
                 log.warning("hls %s: %s", cid, exc)
+                relay.expired(cid)
                 return self._json({"error": "upstream unreachable"}, 502)
             with r:
                 ctype = r.headers.get("Content-Type", "application/octet-stream")
                 is_playlist = "mpegurl" in ctype.lower() or urlsplit(r.url).path.endswith(".m3u8")
                 if r.status_code >= 400:
+                    if token == "master" or r.status_code in (401, 403, 404, 410):
+                        relay.expired(cid)  # next master request looks the stream up again
                     return self._json({"error": f"upstream {r.status_code}"}, 502)
                 if is_playlist:
                     text = r.content.decode("utf-8", "replace")
@@ -324,6 +343,8 @@ def main():
     parser.add_argument("--open", action="store_true", help="open the page in the default browser")
     parser.add_argument("--config", default=str(HERE / "config.json"))
     parser.add_argument("--playlist", default=str(PLAYLIST_PATH))
+    parser.add_argument("--osiris", default="http://localhost:3000", metavar="URL",
+                        help="Osiris instance used to look up stations with \"resolve\": {\"via\": \"osiris\"}")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -332,7 +353,7 @@ def main():
     cfg = load_config(args.config)
     cams = load_playlist(args.playlist, cfg)
     stations = Stations(cfg, cams)
-    relay = HlsRelay(cams, cfg["timeout_seconds"])
+    relay = HlsRelay(Resolver(cams, args.osiris, cfg["timeout_seconds"]), cfg["timeout_seconds"])
     server = ThreadingHTTPServer((args.host, args.port), make_handler(cfg, stations, relay))
     shown = "localhost" if args.host in ("127.0.0.1", "0.0.0.0") else args.host
     url = f"http://{shown}:{args.port}"

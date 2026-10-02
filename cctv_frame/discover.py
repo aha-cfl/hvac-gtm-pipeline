@@ -122,6 +122,11 @@ def list_osiris(base_url, region=None, near=None, radius_km=25, limit=30, probe=
             }
             if live:
                 station.update(stream_url=url, stream_type=stream_type)
+                if stream_type == "hls":
+                    # Stream URLs often carry expiring tokens: keep the place, and
+                    # let web.py look the current URL up from Osiris when it plays.
+                    station["resolve"] = {"via": "osiris", "near": [cam["lat"], cam["lng"]],
+                                          "name": cam.get("name", "")}
             else:
                 station["image_url"] = url
             keep.append(station)

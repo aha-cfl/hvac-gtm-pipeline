@@ -40,7 +40,7 @@ Precedence: `--style` flag, then the last choice on this device, then `config.js
 
 Each station has `name`, `city`, `lat`, `lng` and `image_url`. `tz` (IANA name, e.g. `Asia/Hong_Kong`) is optional; without it the local time shown is mean solar time (`~`).
 
-The starter list has Hong Kong Transport Department and NZTA open-data cameras, taken from Osiris's own source. They span 12+ time zones, but none have been verified live yet.
+The starter list has four Seoul live stations (see below), then Hong Kong Transport Department and NZTA open-data cameras, taken from Osiris's own source. They span 12+ time zones, but none have been verified live yet.
 
 - A station that fails once with nothing cached is skipped at once.
 - A station that fails twice is skipped even if it has a cached image.
@@ -94,6 +94,38 @@ python frame.py --list-osiris --near 54.5,18.55 --live --save   # add the workin
 ```
 
 Bandwidth: one HLS station is typically 0.5–3 Mbit/s while it's on screen. Snapshot stations use about 50 KB per minute.
+
+## Seoul live stations (and any stream whose URL expires)
+
+`playlist.json` starts with four Seoul stations, all from the Osiris Seoul view:
+- Cheonggyecheon 8-ga
+- City Hall / Sejongdae-ro
+- Jangchung-dong
+- Namsan Tunnel 2 South
+
+They have no fixed URL. Seoul's CCTV streams (Seoul TOPIS / police UTIC cameras, republished by OpenCCTV) use addresses that change over time. So each station is stored as a **place**, and `web.py` looks up its current stream when it plays:
+
+```json
+"resolve": {"via": "osiris", "near": [37.5721, 127.0235], "name": ["Cheonggyecheon 8", "청계8가"]}
+```
+
+- **Lookup:** asks your local Osiris for live HLS cameras near that point. It takes the one whose name matches (within 1.5 km), otherwise the nearest within 400 m. The answer is reused for 10 minutes.
+- **Expiry:** if the stream starts failing (expired token, camera moved), the server forgets the address and looks it up again.
+- **On the page:** a fading signal shows static instead of a frozen frame, and the same station re-tunes itself. Only after 3 failed re-tunes does the dial move on.
+- **Tested:** a live stream's address was expired mid-play. The page kept the same station and resumed on the new address within about 6 seconds, with no skip.
+
+**To use them:** run Osiris (`npm run dev` in the osiris checkout), then `python web.py --open`. Use `--osiris URL` if it isn't on localhost:3000. Without Osiris running, these stations show as offline and the dial skips them.
+
+**Add more:**
+
+```bash
+python frame.py --list-osiris --near 37.5665,126.978 --radius 8 --live --probe   # see what's live
+python frame.py --list-osiris --near 37.5665,126.978 --radius 8 --live --save    # add them (saved with "resolve")
+```
+
+`"via": "its"` uses Korea's national ITS open API instead. It needs `ITS_API_KEY` from its.go.kr, and covers expressways and national roads, not Seoul city streets.
+
+Why a live directory lookup is needed: stream addresses issued per session can't be hard-coded. The long-term fix is an official key (Seoul TOPIS / UTIC / ITS) or a licensed feed provider, not a scraped aggregator.
 
 ## Open it as a webpage (recommended)
 

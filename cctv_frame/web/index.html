@@ -333,21 +333,25 @@
     im.onerror = () => failStation(st, seq, tuned);
     im.src = api.frameUrl(st, want);
   }
-  function loadHls(st, seq, tuned) {
-    vid.muted = muted;
-    const ready = () => {
-      if (seq !== loadSeq) return;
-      clearTimeout(liveTimer);
-      pixelizer.resize(); presentVideo();
-      if (tuned) endStatic(st);
-    };
-    vid.onplaying = ready;
-    vid.onerror = () => failStation(st, seq, tuned);
-    liveTimer = setTimeout(() => failStation(st, seq, tuned), 15000);  // never stalls on a dead stream
-    const url = api.hlsUrl(st);
+  // Like a radio holding a weak signal: when a live stream drops or freezes,
+  // play a little static and re-tune the same station (the server looks the
+  // stream up again, which renews expired URLs). Only after RETUNES failures in
+  // a row does the station give way to the next one.
+  const RETUNES = 3, STALL_MS = 12000;
+  let retunes = 0, lastTime = -1, lastMove = 0, played = false;
+  function attachHls(st, seq, tuned) {
+    if (hls) { hls.destroy(); hls = null; }
+    const url = api.hlsUrl(st) + "?t=" + Date.now();
     if (window.Hls && window.Hls.isSupported()) {
-      hls = new window.Hls({ maxBufferLength: 12, backBufferLength: 10, liveSyncDurationCount: 3 });
-      hls.on(window.Hls.Events.ERROR, (_, data) => { if (data.fatal) failStation(st, seq, tuned); });
+      hls = new window.Hls({ maxBufferLength: 12, backBufferLength: 10, liveSyncDurationCount: 3,
+        manifestLoadingMaxRetry: 1, levelLoadingMaxRetry: 3, fragLoadingMaxRetry: 3 });
+      hls.on(window.Hls.Events.ERROR, (_, data) => {
+        if (!data.fatal || seq !== loadSeq) return;
+        if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR && retunes === 0) { retunes++; hls.recoverMediaError(); return; }
+        // 503 = the directory has no live camera at this place right now: don't linger.
+        if (!played && data.response && data.response.code === 503) { failStation(st, seq, tuned); return; }
+        retune(st, seq, tuned, data.details);
+      });
       hls.loadSource(url);
       hls.attachMedia(vid);
     } else if (vid.canPlayType("application/vnd.apple.mpegurl")) {
@@ -355,6 +359,41 @@
     } else { failStation(st, seq, tuned); return; }
     vid.play().catch(() => {});
   }
+  function retune(st, seq, tuned, why) {
+    if (seq !== loadSeq) return;
+    // A station that was playing gets RETUNES tries; one that never started gets one.
+    if (++retunes > (played ? RETUNES : 1)) { api.log("signal_lost", { why }); failStation(st, seq, tuned); return; }
+    api.log("retune", { why, attempt: retunes });
+    startStatic();
+    setTimeout(() => { if (seq === loadSeq) attachHls(st, seq, tuned); }, 800 * retunes);
+  }
+  function loadHls(st, seq, tuned) {
+    vid.muted = muted;
+    retunes = 0; lastTime = -1; lastMove = Date.now(); played = false;
+    const ready = () => {
+      if (seq !== loadSeq) return;
+      clearTimeout(liveTimer);
+      retunes = 0; lastMove = Date.now(); played = true;
+      pixelizer.resize(); presentVideo();
+      if (tuned || staticOn) endStatic(st, !tuned);
+    };
+    vid.onplaying = ready;
+    // Signal fading: if the picture waits on data for more than 1.5 s, hiss
+    // until it comes back (onplaying above ends the static quietly).
+    vid.onwaiting = () => setTimeout(() => {
+      if (seq === loadSeq && vid.readyState < 3 && (shown === vid || shown === pix)) { startStatic(); api.log("fade"); }
+    }, 1500);
+    vid.onerror = () => retune(st, seq, tuned, "video error");
+    vid.onended = () => retune(st, seq, tuned, "stream ended");
+    liveTimer = setTimeout(() => failStation(st, seq, tuned), 20000);  // never sits on a dead stream
+    attachHls(st, seq, tuned);
+  }
+  // Frozen picture watchdog: a stream can stay "playing" while no new video arrives.
+  setInterval(() => {
+    if (!(shown === vid || shown === pix) || vid.paused) return;
+    if (vid.currentTime !== lastTime) { lastTime = vid.currentTime; lastMove = Date.now(); return; }
+    if (Date.now() - lastMove > STALL_MS) { lastMove = Date.now(); retune(stations[idx], loadSeq, false, "frozen"); }
+  }, 2000);
   function loadEmbed(st, seq, tuned) {
     let url = st.stream.url;
     try {
@@ -396,9 +435,9 @@
     sc.classList.add("on"); drawNoise();
   }
   function stopStatic() { staticOn = false; sc.classList.remove("on"); }
-  function endStatic(st) {
+  function endStatic(st, quiet = false) {
     const left = (cfg.static_seconds || 0.6) * 1000 - (Date.now() - staticStart);
-    setTimeout(() => { stopStatic(); showIdent(st); }, Math.max(0, left));
+    setTimeout(() => { stopStatic(); if (!quiet) showIdent(st); }, Math.max(0, left));
   }
   let identTimer = 0;
   function showIdent(st) {

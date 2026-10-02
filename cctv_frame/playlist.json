@@ -1,6 +1,93 @@
 {
   "cameras": [
     {
+      "id": "seoul-cheonggyecheon-8ga",
+      "name": "Cheonggyecheon 8-ga",
+      "city": "Seoul",
+      "country": "KR",
+      "lat": 37.5721,
+      "lng": 127.0235,
+      "tz": "Asia/Seoul",
+      "resolve": {
+        "via": "osiris",
+        "near": [
+          37.5721,
+          127.0235
+        ],
+        "name": [
+          "Cheonggyecheon 8",
+          "청계8가"
+        ]
+      },
+      "source": "Seoul TOPIS via OpenCCTV (looked up through Osiris)"
+    },
+    {
+      "id": "seoul-city-hall-sejongdae-ro",
+      "name": "City Hall, Sejongdae-ro",
+      "city": "Seoul",
+      "country": "KR",
+      "lat": 37.5663,
+      "lng": 126.9779,
+      "tz": "Asia/Seoul",
+      "resolve": {
+        "via": "osiris",
+        "near": [
+          37.5663,
+          126.9779
+        ],
+        "name": [
+          "City Hall",
+          "Sejongdae",
+          "시청",
+          "세종대로"
+        ]
+      },
+      "source": "Seoul TOPIS via OpenCCTV (looked up through Osiris)"
+    },
+    {
+      "id": "seoul-jangchung-dong",
+      "name": "Jangchung-dong",
+      "city": "Seoul",
+      "country": "KR",
+      "lat": 37.561,
+      "lng": 127.006,
+      "tz": "Asia/Seoul",
+      "resolve": {
+        "via": "osiris",
+        "near": [
+          37.561,
+          127.006
+        ],
+        "name": [
+          "Jangchung",
+          "장충"
+        ]
+      },
+      "source": "Seoul TOPIS via OpenCCTV (looked up through Osiris)"
+    },
+    {
+      "id": "seoul-namsan-tunnel-2",
+      "name": "Namsan Tunnel 2 South",
+      "city": "Seoul",
+      "country": "KR",
+      "lat": 37.5445,
+      "lng": 126.9925,
+      "tz": "Asia/Seoul",
+      "resolve": {
+        "via": "osiris",
+        "near": [
+          37.5445,
+          126.9925
+        ],
+        "name": [
+          "Namsan Tunnel 2",
+          "남산2호터널",
+          "남산 2호"
+        ]
+      },
+      "source": "Seoul TOPIS via OpenCCTV (looked up through Osiris)"
+    },
+    {
       "id": "hk-aberdeen-h429f",
       "name": "Aberdeen Praya Road, Fish Market",
       "city": "Hong Kong",
