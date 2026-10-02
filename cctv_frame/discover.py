@@ -44,19 +44,39 @@ def _snapshot_kind(cam):
     return "jpg" if url.split("?")[0].endswith(IMAGE_EXTS) or cam.get("stream_type") == "jpg" else "jpg?"
 
 
-def _probe(url):
+def _live_kind(cam):
+    """'hls', 'youtube' or 'iframe' for a live-video camera, else None."""
+    url = (cam.get("stream_url") or "").lower()
+    kind = cam.get("stream_type")
+    if not url.startswith("http"):
+        return None
+    if kind == "hls" or url.split("?")[0].endswith(".m3u8"):
+        return "hls"
+    if "youtube.com/embed/" in url or "youtube-nocookie.com/embed/" in url:
+        return "youtube"
+    return "iframe" if kind == "iframe" else None
+
+
+def _probe(url, kind="jpg"):
     try:
         r = requests.get(url, timeout=10, headers={"User-Agent": USER_AGENT})
     except requests.RequestException as exc:
         return f"FAIL {type(exc).__name__}"
-    if r.ok and r.headers.get("content-type", "").startswith("image/"):
-        return "OK"
-    return f"FAIL {r.status_code} {r.headers.get('content-type', '')}"
+    if kind == "hls":
+        ok = r.ok and r.text.lstrip().startswith("#EXTM3U")
+    else:
+        ok = r.ok and r.headers.get("content-type", "").startswith("image/")
+    return "OK" if ok else f"FAIL {r.status_code} {r.headers.get('content-type', '')}"
 
 
 def list_osiris(base_url, region=None, near=None, radius_km=25, limit=30, probe=False,
-                save_to=None):
-    """Print still-image cameras from Osiris; with save_to, add the [OK] ones as stations."""
+                save_to=None, live=False):
+    """Print cameras from Osiris; with save_to, add the [OK] ones as stations.
+
+    By default only still-image (snapshot) cameras are listed. With live=True,
+    live video is listed instead: HLS streams (probed, playable and pixelatable)
+    and YouTube/iframe players (embedded as-is; can't be probed or pixelated).
+    """
     params = {}
     if region:
         params["region"] = region
@@ -67,34 +87,43 @@ def list_osiris(base_url, region=None, near=None, radius_km=25, limit=30, probe=
     body = resp.json()
     cams = []
     for cam in body.get("cameras", []):
-        kind = _snapshot_kind(cam)
+        kind = _live_kind(cam) if live else _snapshot_kind(cam)
         if not kind:
             continue
         dist = _km(near[0], near[1], cam["lat"], cam["lng"]) if near else None
         if dist is not None and dist > radius_km:
             continue
         cams.append((dist, kind, cam))
-    cams.sort(key=lambda t: (t[0] is None, t[0] or 0, t[1] != "jpg"))
+    cams.sort(key=lambda t: (t[0] is None, t[0] or 0, t[1] not in ("jpg", "hls")))
     if body.get("pendingRegions"):
         print(f"# still loading in Osiris: {', '.join(body['pendingRegions'])} (re-run shortly)")
-    print(f"# {len(cams)} still-image cameras of {body.get('total', '?')} returned")
+    what = "live-video" if live else "still-image"
+    print(f"# {len(cams)} {what} cameras of {body.get('total', '?')} returned")
     keep = []
     for dist, kind, cam in cams[:limit]:
-        if probe or save_to:
-            kind = _probe(cam["feed_url"])
+        url = cam["stream_url"] if live else cam["feed_url"]
+        stream_type = kind if live else None
+        if (probe or save_to) and kind in ("jpg", "jpg?", "hls"):
+            kind = _probe(url, "hls" if kind == "hls" else "jpg")
+        elif save_to and kind in ("youtube", "iframe"):
+            kind = "OK"  # embedded players can't be probed; review them on the page
         where = f"{dist:5.1f} km" if dist is not None else cam.get("country", "")
         print(f"[{kind}] {cam.get('name')} · {cam.get('city', '')} · {cam.get('source')} · {where}\n"
-              f"    {cam['feed_url']}")
+              f"    {url}")
         if kind == "OK":
-            keep.append({
+            station = {
                 "id": slug(cam.get("id") or cam.get("name", "cam")),
                 "name": cam.get("name", "Camera"),
                 "city": cam.get("city", ""),
                 "country": cam.get("country", ""),
                 "lat": cam["lat"],
                 "lng": cam["lng"],
-                "image_url": cam["feed_url"],
                 "source": cam.get("source", ""),
-            })
+            }
+            if live:
+                station.update(stream_url=url, stream_type=stream_type)
+            else:
+                station["image_url"] = url
+            keep.append(station)
     if save_to:
         print(f"# added {add_to_playlist(save_to, keep)} station(s) to {save_to}")

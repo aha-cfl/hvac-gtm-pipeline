@@ -202,6 +202,8 @@ class Fetcher(threading.Thread):
         if cam is None:
             return False
         try:
+            if not cam.get("image_url"):
+                raise OSError("live-stream station: no snapshot (use web.py for video)")
             img = fetch_image(cam["image_url"], self.timeout)
         except (requests.RequestException, OSError) as exc:
             with self.lock:
@@ -518,6 +520,8 @@ def main():
                         help="with --list-osiris: fetch each listed feed to confirm it serves an image")
     parser.add_argument("--save", action="store_true",
                         help="with --list-osiris: probe and add [OK] cameras to the playlist")
+    parser.add_argument("--live", action="store_true",
+                        help="with --list-osiris: list live-video cameras (HLS, YouTube) instead of snapshots")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -528,7 +532,7 @@ def main():
         else:
             near = tuple(float(v) for v in args.near.split(",")) if args.near else None
             list_osiris(args.osiris, args.region, near, args.radius, args.limit, args.probe,
-                        args.playlist if args.save else None)
+                        args.playlist if args.save else None, args.live)
         return
     CACHE_DIR.mkdir(exist_ok=True)
     CAM_CACHE.mkdir(exist_ok=True)

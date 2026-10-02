@@ -5,8 +5,8 @@ Built as a ladder of standalone prototypes. See [PROTOTYPES.md](PROTOTYPES.md); 
 Tune into the sights of local life in other places. Radio lets you hear what a
 city is talking about; this lets you see it.
 
-Each **station** is a public camera. The frame shows one station fullscreen
-behind black glass, refreshed every 60 s.
+Each **station** is a public camera: live video, or a snapshot refreshed every 60 s.
+The frame shows one station fullscreen behind black glass.
 - **SCAN ☀** drifts between stations that are currently in daylight, one every 2 min.
 - **SCAN ALL** includes night stations.
 - **TUNED** holds one station.
@@ -30,6 +30,7 @@ No time-zone database or network call is needed.
 | ↑ / ↓, Enter | tap a station | Select a station and hold it (TUNED). Tap it again to resume scanning |
 | A | SCAN chips | Switch between SCAN ☀ and SCAN ALL |
 | P / Space | REAL/PIXEL chips | Switch picture style |
+| M | — | Sound on/off for live video stations |
 | Esc | — | Close the list, then quit |
 
 Style, mode and the held station are saved in `cache/state.json`.
@@ -66,6 +67,33 @@ which require the attribution "Powered by TfL Open Data". Check any other source
 Tools: utility knife, metal straightedge, tape measure, precision screwdrivers.
 
 **Zero-hardware test first:** run it on your laptop (steps below). That proves the software before you buy anything.
+
+## Live video stations
+
+A station can be live video instead of (or as well as) a refreshing snapshot. Add these fields in `playlist.json`:
+
+```json
+{"id": "...", "name": "...", "lat": 0, "lng": 0,
+ "stream_url": "https://.../playlist.m3u8", "stream_type": "hls",
+ "image_url": "https://.../snapshot.jpg"}
+```
+
+| `stream_type` | Plays as | Pixel mode | Notes |
+|---|---|---|---|
+| `hls` | Live video through `web.py`'s relay | Yes, pixelated in the browser at ~12 fps with the same palettes (night palette after dark) | Most US DOT 511 streams and many webcams. The relay only follows hosts named by that station's own stream |
+| `youtube` | Embedded YouTube player | No: the player is another site's, so its pixels can't be read | Only use the official embed URL. Don't hide or crop the player in a product |
+| `iframe` | Embedded web player (e.g. ipcamlive) | No | Same restriction |
+
+- **Fallback:** if a live stream fails, the station falls back to its `image_url` snapshot if it has one. Otherwise it's skipped like any dead station.
+- **Sound:** live video starts muted (browsers block autoplay with sound). Press **M** to toggle. On the frame computer, add `--autoplay-policy=no-user-gesture-required` to the kiosk command to allow sound from boot.
+- **Finding live stations with Osiris:**
+
+```bash
+python frame.py --list-osiris --region us-west --live --probe   # list live cams, test the HLS ones
+python frame.py --list-osiris --near 54.5,18.55 --live --save   # add the working ones as stations
+```
+
+Bandwidth: one HLS station is typically 0.5–3 Mbit/s while it's on screen. Snapshot stations use about 50 KB per minute.
 
 ## Open it as a webpage (recommended)
 

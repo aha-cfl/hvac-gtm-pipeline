@@ -21,7 +21,11 @@ def slug(text):
 
 
 def load_playlist(path, cfg):
-    """Cameras from playlist.json, else the single image_url in config.json."""
+    """Cameras from playlist.json, else the single image_url in config.json.
+
+    A station needs an image_url (snapshot JPEG) and/or a stream_url with
+    stream_type "hls" (live video) or "youtube"/"iframe" (embedded player).
+    """
     try:
         with open(path) as f:
             cams = json.load(f)["cameras"]
@@ -29,7 +33,7 @@ def load_playlist(path, cfg):
         cams = [{"name": cfg.get("camera_name", "Camera"), "image_url": cfg["image_url"]}]
     out = []
     for cam in cams:
-        if cam.get("enabled", True) is False or not cam.get("image_url"):
+        if cam.get("enabled", True) is False or not (cam.get("image_url") or cam.get("stream_url")):
             continue
         cam = dict(cam)
         cam.setdefault("name", "Camera")
@@ -47,8 +51,9 @@ def add_to_playlist(path, cams):
             data = json.load(f)
     except FileNotFoundError:
         data = {"cameras": []}
-    have = {c.get("image_url") for c in data["cameras"]}
-    added = [c for c in cams if c["image_url"] not in have]
+    url = lambda c: c.get("image_url") or c.get("stream_url")
+    have = {url(c) for c in data["cameras"]}
+    added = [c for c in cams if url(c) not in have]
     data["cameras"].extend(added)
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
