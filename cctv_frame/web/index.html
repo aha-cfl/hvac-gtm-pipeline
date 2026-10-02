@@ -43,7 +43,7 @@
   #side { position: fixed; top: 0; right: 0; bottom: 0; width: max(300px, 34vw); max-width: 100vw;
     box-sizing: border-box; padding: 2.6vh 3vh; display: flex; flex-direction: column;
     background: var(--panel); border-left: 1px solid var(--line);
-    transform: translateX(100%); transition: transform .25s ease; }
+    transform: translateX(100%); transition: transform .25s ease; z-index: 2; }
   #side.open { transform: none; }
   .label { font-size: max(11px, 1.9vh); color: var(--dim); letter-spacing: .08em; }
   .chips { display: flex; flex-wrap: wrap; gap: .8vh; margin-top: 1.4vh; }
