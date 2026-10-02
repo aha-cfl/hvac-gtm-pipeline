@@ -1,0 +1,24 @@
+{
+  "cameras": [
+    {
+      "id": "maastricht-vrijthof",
+      "name": "Vrijthof",
+      "city": "Maastricht",
+      "country": "NL",
+      "lat": 50.849073,
+      "lng": 5.68863,
+      "tz": "Europe/Amsterdam",
+      "stream_url": "https://565c3c746b763.streamlock.net/live/maastricht2.stream/playlist.m3u8",
+      "stream_type": "hls",
+      "source": "webcam-maastricht.nl (public webcam) — private prototype use only",
+      "alternates": [
+        {
+          "name": "Sint Servaasbrug",
+          "lat": 50.849411,
+          "lng": 5.69572,
+          "stream_url": "https://565c3c746b763.streamlock.net/live/maastricht.stream/playlist.m3u8"
+        }
+      ]
+    }
+  ]
+}

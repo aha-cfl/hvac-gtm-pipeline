@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visual Radio</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #000;
+    --ink: #e8e8e2;
+    --dim: #84868b;
+    --faint: #4a4c52;
+    --line: #26282e;
+    --accent: #e3cf5b;
+    --live: #d04648;
+    --off: #d04648;
+    --panel: rgba(4, 5, 7, 0.88);
+    --chip-on: #2e3036;
+  }
+  /* The frame is always black glass; dark and light schemes share the same tokens. */
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #000; } }
+  :root[data-theme="dark"] { --bg: #000; }
+
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden;
+    font-family: "DejaVu Sans", "Segoe UI", system-ui, sans-serif; color: var(--ink);
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  body.idle, body.idle * { cursor: none !important; }
+
+  #stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .media { display: none; filter: brightness(var(--bright, 0.85)); border: 0; background: #000; }
+  .media.show { display: block; }
+  #pic.pixel, #pix { image-rendering: pixelated; image-rendering: crisp-edges; }
+  #embed { pointer-events: none; }  /* taps go to the radio, not the embedded player */
+  #tuning { position: fixed; left: 6vw; top: 50%; color: #505258; font-size: 2.4vh; display: none; }
+  #nosignal { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center;
+    justify-content: center; gap: 1.2vh; pointer-events: none; text-shadow: 0 1px 3px #000; z-index: 1; }
+  #nosignal.on { display: flex; }
+  #nosignal .big { font-size: 4.2vh; letter-spacing: .3em; color: #c9cbcb; }
+  #nosignal .why { font-size: 2vh; color: #8a8c90; }
+  #static.on.dim { opacity: .4; }
+
+  #static { position: fixed; inset: 0; width: 100%; height: 100%; image-rendering: pixelated;
+    opacity: 0; pointer-events: none; }
+  #static.on { opacity: 1; }
+
+  #ident { position: fixed; left: 6vw; bottom: 9vh; opacity: 0; pointer-events: none;
+    transition: opacity 1s ease; text-shadow: 0 1px 2px #000, 0 2px 8px #000; }
+  #ident.on { opacity: 1; transition: opacity .3s ease; }
+  #ident .city { font-size: 5vh; letter-spacing: .04em; }
+  #ident .sub { font-size: 2.4vh; color: #a2a4a8; margin-top: .6vh; }
+  .live { color: var(--live); letter-spacing: .06em; }
+
+  #side { position: fixed; top: 0; right: 0; bottom: 0; width: max(300px, 34vw); max-width: 100vw;
+    box-sizing: border-box; padding: 2.6vh 3vh; display: flex; flex-direction: column;
+    background: var(--panel); border-left: 1px solid var(--line);
+    transform: translateX(100%); transition: transform .25s ease; z-index: 2; }
+  #side.open { transform: none; }
+  .label { font-size: max(11px, 1.9vh); color: var(--dim); letter-spacing: .08em; }
+  .chips { display: flex; flex-wrap: wrap; gap: .8vh; margin-top: 1.4vh; }
+  .chip { font: inherit; font-size: max(12px, 2vh); color: var(--dim); background: none;
+    border: 1px solid var(--faint); border-radius: 6px; padding: .6vh 1.2vh; cursor: pointer; }
+  .chip.on { color: var(--ink); background: var(--chip-on); border-color: #5a5c62; }
+  .chip:disabled { opacity: .35; cursor: default; }
+  .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  hr { border: 0; border-top: 1px solid var(--faint); margin: 2vh 0 1vh; }
+  #list { flex: 1; overflow-y: auto; margin: 0 -3vh; scrollbar-width: none; }
+  #list::-webkit-scrollbar { display: none; }
+  .st { position: relative; padding: 1.1vh 3vh; cursor: pointer; }
+  .st.sel { background: #1c1e24; }
+  .st.cur::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--accent); }
+  .st .name { font-size: max(13px, 2.4vh); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 3vh; }
+  .st .sub { font-size: max(11px, 1.9vh); color: var(--dim); margin-top: .3vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .st .glyph { position: absolute; right: 3vh; top: 1vh; font-size: max(14px, 2.5vh); color: var(--dim); }
+  .st .glyph.day { color: var(--accent); }
+  .st.muted .name { color: var(--dim); }
+  .st.dead .sub { color: var(--off); }
+  #foot { border-top: 1px solid var(--faint); padding-top: 1.2vh; }
+  #status { font-size: max(11px, 1.9vh); color: var(--dim); }
+  #hints { font-size: max(10px, 1.7vh); color: var(--faint); margin-top: .6vh; }
+  @media (max-width: 600px) { #side { width: 100vw; } }
+  @media (prefers-reduced-motion: reduce) { #side, #ident { transition: none; } }
+</style>
+</head>
+<body>
+<div id="stage">
+  <img id="pic" class="media" alt="">
+  <video id="vid" class="media" muted playsinline autoplay></video>
+  <canvas id="pix" class="media"></canvas>
+  <iframe id="embed" class="media" allow="autoplay; encrypted-media" referrerpolicy="strict-origin-when-cross-origin" title="Live camera"></iframe>
+</div>
+<div id="tuning">tuning…</div>
+<div id="nosignal"><div class="big">NO SIGNAL</div><div class="why"></div></div>
+<canvas id="static" width="160" height="90"></canvas>
+<div id="ident"><div class="city"></div><div class="sub"></div></div>
+
+<aside id="side" aria-label="Stations">
+  <div class="label">VISUAL RADIO</div>
+  <div class="chips" id="modes">
+    <button class="chip" data-mode="auto">SCAN ☀</button>
+    <button class="chip" data-mode="all">SCAN ALL</button>
+    <button class="chip" data-mode="pinned">TUNED</button>
+  </div>
+  <div class="chips" id="styles">
+    <button class="chip" data-style="real">REAL</button>
+    <button class="chip" data-style="pixel">PIXEL</button>
+  </div>
+  <hr>
+  <div id="list"></div>
+  <div id="foot">
+    <div id="status"></div>
+    <div id="hints">←→ tune · ↑↓ select · ⏎ hold · A scan · P style · M sound · S hide · F fullscreen</div>
+  </div>
+</aside>
+
+<script src="/vendor/hls.light.min.js" onerror="this.remove()"></script>
+<script>
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const DEMO = window.VR_DEMO || null;           // sample-frame build (no server)
+  const qs = new URLSearchParams(location.search);
+
+  // ---- persisted per-device choices (localStorage can throw or be empty) ----
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem("vr." + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("vr." + k, JSON.stringify(v)); } catch {} },
+  };
+
+  // ---- sun (same NOAA approximation as sun.py) ----
+  const R = Math.PI / 180;
+  function elevation(lat, lng, d) {
+    const h = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+    const doy = Math.floor((d - Date.UTC(d.getUTCFullYear(), 0, 1)) / 864e5) + 1;
+    const g = 2 * Math.PI / 365 * (doy - 1 + (h - 12) / 24);
+    const eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g)
+      - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+    const de = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g)
+      + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
+    const ha = ((h * 60 + eq + 4 * lng) / 4 - 180) * R, la = lat * R;
+    const c = Math.sin(la) * Math.sin(de) + Math.cos(la) * Math.cos(de) * Math.cos(ha);
+    return 90 - Math.acos(Math.max(-1, Math.min(1, c))) / R;
+  }
+  function phase(st, d = new Date()) {
+    if (st.lat == null || st.lng == null) return "day";
+    const e = elevation(st.lat, st.lng, d);
+    return e >= 6 ? "day" : e >= -4 ? "dusk" : "night";
+  }
+  function localTime(st, d = new Date()) {
+    if (st.tz) {
+      try { return new Intl.DateTimeFormat("en-GB", { timeZone: st.tz, hour: "2-digit", minute: "2-digit", hour12: false }).format(d); } catch {}
+    }
+    if (st.lng == null) return "";
+    const s = new Date(d.getTime() + st.lng / 15 * 3600e3);
+    return "~" + String(s.getUTCHours()).padStart(2, "0") + ":" + String(s.getUTCMinutes()).padStart(2, "0");
+  }
+  const GLYPH = { day: "☀", dusk: "◐", night: "☾" };
+
+  // ---- data source: local server, or embedded sample frames ----
+  const api = {
+    async stations() {
+      if (DEMO) return DEMO;
+      const r = await fetch("/api/stations", { cache: "no-store" });
+      if (!r.ok) throw new Error("stations " + r.status);
+      return r.json();
+    },
+    frameUrl(st, style) {
+      if (DEMO) {
+        const f = DEMO.frames[st.id];
+        return style === "pixel" ? (phase(st) === "night" ? f.pixelNight : f.pixel) : f.real;
+      }
+      // The page's clock decides day/night so the palette always matches the station ID.
+      return `/api/frame/${encodeURIComponent(st.id)}?style=${style}&phase=${phase(st)}&t=${Date.now()}`;
+    },
+    hlsUrl(st) { return `/api/hls/${encodeURIComponent(st.id)}/master`; },
+    log(type, extra = {}) {
+      if (DEMO) return;
+      const st = stations[idx];
+      const body = JSON.stringify({ type, station: st && st.id, style, mode, ...extra });
+      fetch("/api/event", { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => {});
+    },
+  };
+
+  // ---- state ----
+  let cfg = {}, stations = [], idx = 0, sel = 0, level = 3;
+  let style = "real", mode = "auto", nextAt = 0, sidebarUntil = 0, muted = true;
+  const offlineUntil = new Map();               // id -> ms timestamp
+  const pic = $("#pic"), vid = $("#vid"), pix = $("#pix"), embed = $("#embed"), side = $("#side");
+
+  const isLive = (st) => !!(st && st.stream);
+  const canPixel = (st) => !st || !st.stream || st.stream.type === "hls";
+  const isOffline = (st) => (offlineUntil.get(st.id) || 0) > Date.now() || (st.offline && !DEMO);
+  function eligible() {
+    let live = stations.map((_, i) => i).filter((i) => !isOffline(stations[i]));
+    if (!live.length) live = stations.map((_, i) => i);
+    if (mode === "auto") {
+      const lit = live.filter((i) => phase(stations[i]) !== "night");
+      return lit.length ? lit : live;
+    }
+    return live;
+  }
+  function step(dir = 1) {
+    const pool = eligible(), n = stations.length;
+    for (let k = 1; k <= n; k++) {
+      const i = ((idx + dir * k) % n + n) % n;
+      if (pool.includes(i)) return i;
+    }
+    return pool[0];
+  }
+  function save() {
+    if (level < 3) return;   // lower prototype tiers never overwrite the radio's choices
+    store.set("style", style);
+    store.set("mode", mode);
+    store.set("pinned", mode === "pinned" ? stations[idx].id : null);
+  }
+
+  // ---- layout: fit media inside the black-glass box ----
+  let shown = null;                              // the element currently on screen
+  function fit(el, w, h, whole) {
+    const scale = cfg.image_scale || 0.92;
+    let k = Math.min(innerWidth * scale / w, innerHeight * scale / h);
+    if (whole) k = Math.max(1, Math.floor(k)); // whole-number upscale keeps pixels square
+    el.style.width = Math.round(w * k) + "px";
+    el.style.height = Math.round(h * k) + "px";
+  }
+  function layout() {
+    if (shown === pic && pic.naturalWidth) fit(pic, pic.naturalWidth, pic.naturalHeight, pic.classList.contains("pixel"));
+    else if (shown === vid && vid.videoWidth) fit(vid, vid.videoWidth, vid.videoHeight, false);
+    else if (shown === pix && pix.width) fit(pix, pix.width, pix.height, true);
+    else if (shown === embed) fit(embed, 16, 9, false);
+  }
+  addEventListener("resize", () => { pixelizer.resize(); layout(); });
+  function show(el) {
+    if (el) clearNoSignal();
+    for (const m of [pic, vid, pix, embed]) m.classList.toggle("show", m === el);
+    shown = el;
+    $("#tuning").style.display = el ? "none" : "block";
+    layout();
+  }
+
+  // ---- live video → pixel art, in the browser (same steps as pixelate.py) ----
+  const pixelizer = (() => {
+    const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+    const ctx = pix.getContext("2d", { willReadFrequently: true });
+    let raf = 0, last = 0, artW = 0, artH = 0, pal = null, lut = null, palKey = "";
+    const hexes = (list) => list.map((h) => [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]);
+    function usePalette(list) {
+      const key = list.join();
+      if (key === palKey) return;
+      palKey = key; pal = hexes(list); lut = new Int8Array(32768).fill(-1);
+    }
+    function nearest(r, g, b) {
+      const k = (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3);
+      let i = lut[k];
+      if (i >= 0) return i;
+      let best = 1e9;
+      for (let j = 0; j < pal.length; j++) {
+        const p = pal[j], d = (p[0] - r) ** 2 + (p[1] - g) ** 2 + (p[2] - b) ** 2;
+        if (d < best) { best = d; i = j; }
+      }
+      return (lut[k] = i);
+    }
+    function resize() {
+      if (!vid.videoWidth) return;
+      const s = cfg.pixel || {}, scale = cfg.image_scale || 0.92;
+      const fitW = Math.min(innerWidth * scale, innerHeight * scale * vid.videoWidth / vid.videoHeight);
+      const factor = Math.max(1, Math.round(fitW / (s.width || 128)));
+      artW = Math.max(8, Math.floor(fitW / factor));
+      artH = Math.max(8, Math.round(artW * vid.videoHeight / vid.videoWidth));
+      pix.width = artW; pix.height = artH;
+      if (shown === pix) layout();               // re-fit as soon as the art size is known
+    }
+    function draw() {
+      if (!artW) resize();
+      if (!artW) return;
+      const s = cfg.pixel || {}, st = stations[idx];
+      usePalette(phase(st) === "night" ? s.night_palette : s.palette);
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(vid, 0, 0, artW, artH);
+      const img = ctx.getImageData(0, 0, artW, artH), d = img.data, n = artW * artH;
+      let mean = 0;
+      for (let i = 0; i < d.length; i += 4) mean += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      mean /= n;
+      const c = s.contrast ?? 1.15, sat = s.saturation ?? 1.25;
+      const spread = s.dither === "none" ? 0 : (s.dither_strength ?? 8);
+      for (let y = 0, i = 0; y < artH; y++) {
+        for (let x = 0; x < artW; x++, i += 4) {
+          let r = mean + (d[i] - mean) * c, g = mean + (d[i + 1] - mean) * c, b = mean + (d[i + 2] - mean) * c;
+          const L = 0.299 * r + 0.587 * g + 0.114 * b;
+          const off = (BAYER[(y & 3) * 4 + (x & 3)] / 15 - 0.5) * 2 * spread;
+          r = L + (r - L) * sat + off; g = L + (g - L) * sat + off; b = L + (b - L) * sat + off;
+          const p = pal[nearest(r < 0 ? 0 : r > 255 ? 255 : r | 0, g < 0 ? 0 : g > 255 ? 255 : g | 0, b < 0 ? 0 : b > 255 ? 255 : b | 0)];
+          d[i] = p[0]; d[i + 1] = p[1]; d[i + 2] = p[2];
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+    }
+    function loop(t) {
+      raf = requestAnimationFrame(loop);
+      if (t - last < 1000 / 12 || vid.readyState < 2) return;   // ~12 fps is plenty for sprite art
+      last = t;
+      try { draw(); } catch (e) { stop(); show(vid); }          // cross-origin video: fall back to real
+    }
+    function start() { if (!raf) { artW = 0; raf = requestAnimationFrame(loop); } }
+    function stop() { cancelAnimationFrame(raf); raf = 0; }
+    return { start, stop, resize, get running() { return !!raf; } };
+  })();
+
+  // ---- media per station type ----
+  let hls = null, loadSeq = 0, liveTimer = 0;
+  function teardownLive() {
+    clearTimeout(liveTimer);
+    pixelizer.stop();
+    if (hls) { hls.destroy(); hls = null; }
+    if (vid.getAttribute("src")) { vid.removeAttribute("src"); vid.load(); }
+    if (embed.getAttribute("src")) embed.removeAttribute("src");
+  }
+  function presentVideo() {
+    if (style === "pixel") { pixelizer.start(); show(pix); }
+    else { pixelizer.stop(); show(vid); }
+  }
+  function failStation(st, seq, tuned) {
+    if (seq !== loadSeq) return;
+    if (isLive(st) && st.has_image && !st._liveFailed) {   // live stream down: fall back to its snapshot
+      st._liveFailed = true; teardownLive(); loadImage(st, seq, tuned); return;
+    }
+    offlineUntil.set(st.id, Date.now() + 600e3);
+    api.log("offline");
+    if (mode !== "pinned" && eligible().length > 0 && step() !== idx) { tune(step(), "skip"); return; }
+    noSignal(st, seq);
+  }
+  // Nowhere else to tune (one-view frame, or a held station): stay on the
+  // station, hiss quietly, and try again every 30 s, the way a radio waits.
+  let noSignalTimer = 0;
+  function noSignal(st, seq) {
+    show(null); $("#tuning").style.display = "none";
+    if (!staticOn) startStatic();
+    sc.classList.add("dim");
+    $("#nosignal .why").textContent = `${st.city || st.name} · retrying every 30 s`;
+    $("#nosignal").classList.add("on");
+    renderList();
+    clearTimeout(noSignalTimer);
+    noSignalTimer = setTimeout(() => {
+      if (seq !== loadSeq) return;
+      offlineUntil.delete(st.id); st._liveFailed = false;
+      api.log("retry");
+      loadStation({ tuned: false });
+    }, 30000);
+  }
+  function clearNoSignal() {
+    clearTimeout(noSignalTimer);
+    if ($("#nosignal").classList.contains("on")) { $("#nosignal").classList.remove("on"); sc.classList.remove("dim"); stopStatic(); }
+  }
+  function loadImage(st, seq, tuned) {
+    const want = style, im = new Image();
+    im.onload = () => {
+      if (seq !== loadSeq) return;
+      pic.classList.toggle("pixel", want === "pixel");
+      pic.src = im.src;
+      if (pic.complete) show(pic); else pic.onload = () => show(pic);
+      if (tuned) endStatic(st);
+    };
+    im.onerror = () => failStation(st, seq, tuned);
+    im.src = api.frameUrl(st, want);
+  }
+  // Like a radio holding a weak signal: when a live stream drops or freezes,
+  // play a little static and re-tune the same station (the server looks the
+  // stream up again, which renews expired URLs). Only after RETUNES failures in
+  // a row does the station give way to the next one.
+  const RETUNES = 3, STALL_MS = 12000;
+  let retunes = 0, lastTime = -1, lastMove = 0, played = false;
+  function attachHls(st, seq, tuned) {
+    if (hls) { hls.destroy(); hls = null; }
+    const url = api.hlsUrl(st) + "?t=" + Date.now();
+    if (window.Hls && window.Hls.isSupported()) {
+      hls = new window.Hls({ maxBufferLength: 12, backBufferLength: 10, liveSyncDurationCount: 3,
+        manifestLoadingMaxRetry: 1, levelLoadingMaxRetry: 3, fragLoadingMaxRetry: 3 });
+      hls.on(window.Hls.Events.ERROR, (_, data) => {
+        if (!data.fatal || seq !== loadSeq) return;
+        if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR && retunes === 0) { retunes++; hls.recoverMediaError(); return; }
+        // 503 = the directory has no live camera at this place right now: don't linger.
+        if (!played && data.response && data.response.code === 503) { failStation(st, seq, tuned); return; }
+        retune(st, seq, tuned, data.details);
+      });
+      hls.loadSource(url);
+      hls.attachMedia(vid);
+    } else if (vid.canPlayType("application/vnd.apple.mpegurl")) {
+      vid.src = url;                                   // Safari plays HLS natively
+    } else { failStation(st, seq, tuned); return; }
+    vid.play().catch(() => {});
+  }
+  function retune(st, seq, tuned, why) {
+    if (seq !== loadSeq) return;
+    // A station that was playing gets RETUNES tries; one that never started gets one.
+    if (++retunes > (played ? RETUNES : 1)) { api.log("signal_lost", { why }); failStation(st, seq, tuned); return; }
+    api.log("retune", { why, attempt: retunes });
+    startStatic();
+    setTimeout(() => { if (seq === loadSeq) attachHls(st, seq, tuned); }, 800 * retunes);
+  }
+  function loadHls(st, seq, tuned) {
+    vid.muted = muted;
+    retunes = 0; lastTime = -1; lastMove = Date.now(); played = false;
+    const ready = () => {
+      if (seq !== loadSeq) return;
+      clearTimeout(liveTimer);
+      retunes = 0; lastMove = Date.now(); played = true;
+      pixelizer.resize(); presentVideo();
+      if (tuned || staticOn) endStatic(st, !tuned);
+    };
+    vid.onplaying = ready;
+    // Signal fading: if the picture waits on data for more than 1.5 s, hiss
+    // until it comes back (onplaying above ends the static quietly).
+    vid.onwaiting = () => setTimeout(() => {
+      if (seq === loadSeq && vid.readyState < 3 && (shown === vid || shown === pix)) { startStatic(); api.log("fade"); }
+    }, 1500);
+    vid.onerror = () => retune(st, seq, tuned, "video error");
+    vid.onended = () => retune(st, seq, tuned, "stream ended");
+    liveTimer = setTimeout(() => failStation(st, seq, tuned), 20000);  // never sits on a dead stream
+    attachHls(st, seq, tuned);
+  }
+  // Frozen picture watchdog: a stream can stay "playing" while no new video arrives.
+  setInterval(() => {
+    if (!(shown === vid || shown === pix) || vid.paused) return;
+    if (vid.currentTime !== lastTime) { lastTime = vid.currentTime; lastMove = Date.now(); return; }
+    if (Date.now() - lastMove > STALL_MS) { lastMove = Date.now(); retune(stations[idx], loadSeq, false, "frozen"); }
+  }, 2000);
+  function loadEmbed(st, seq, tuned) {
+    let url = st.stream.url;
+    try {
+      const u = new URL(url);
+      for (const [k, v] of [["autoplay", "1"], ["mute", muted ? "1" : "0"], ["controls", "0"], ["playsinline", "1"], ["rel", "0"]]) u.searchParams.set(k, v);
+      url = u.toString();
+    } catch {}
+    embed.onload = () => { if (seq === loadSeq) { show(embed); if (tuned) endStatic(st); } };
+    embed.src = url;
+  }
+  function loadStation({ tuned = false } = {}) {
+    const st = stations[idx], seq = ++loadSeq;
+    teardownLive();
+    if (DEMO || !isLive(st) || st._liveFailed) return loadImage(st, seq, tuned);
+    if (st.stream.type === "hls") return loadHls(st, seq, tuned);
+    return loadEmbed(st, seq, tuned);
+  }
+  function refreshPicture() {                      // snapshots only; video is already live
+    const st = stations[idx];
+    if (!isLive(st) || st._liveFailed || DEMO) loadImage(st, loadSeq, false);
+  }
+
+  // ---- static + station ID ----
+  const sc = $("#static"), sctx = sc.getContext("2d");
+  let staticOn = false, staticStart = 0;
+  function drawNoise() {
+    if (!staticOn) return;
+    const img = sctx.createImageData(sc.width, sc.height);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = Math.pow(Math.random(), 2.2) * 150;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = 255;
+    }
+    sctx.putImageData(img, 0, 0);
+    requestAnimationFrame(drawNoise);
+  }
+  function startStatic() {
+    if (staticOn) { staticStart = Date.now(); return; }
+    staticOn = true; staticStart = Date.now();
+    sc.classList.add("on"); drawNoise();
+  }
+  function stopStatic() { staticOn = false; sc.classList.remove("on"); }
+  function endStatic(st, quiet = false) {
+    const left = (cfg.static_seconds || 0.6) * 1000 - (Date.now() - staticStart);
+    setTimeout(() => { stopStatic(); if (!quiet) showIdent(st); }, Math.max(0, left));
+  }
+  let identTimer = 0;
+  function showIdent(st) {
+    if (level < 3) return;
+    const city = (st.city || st.country || st.name).toUpperCase();
+    const viewName = st.view ? `${st.view} (backup view)` : st.name;
+    const parts = [viewName.toUpperCase() !== city ? viewName : "", localTime(st), phase(st)].filter(Boolean);
+    $("#ident .city").textContent = city;
+    const sub = $("#ident .sub");
+    sub.textContent = parts.join(" · ");
+    if (isLive(st) && !st._liveFailed && !DEMO) {
+      const tag = document.createElement("span"); tag.className = "live"; tag.textContent = "● LIVE  ";
+      sub.prepend(tag);
+    }
+    $("#ident").classList.add("on");
+    clearTimeout(identTimer);
+    identTimer = setTimeout(() => $("#ident").classList.remove("on"), (cfg.station_id_seconds || 5) * 1000);
+  }
+
+  function tune(i, source = "tune") {
+    idx = ((i % stations.length) + stations.length) % stations.length;
+    sel = idx;
+    nextAt = Date.now() + (cfg.rotate_seconds || 120) * 1000;
+    if (level >= 3) startStatic();
+    loadStation({ tuned: level >= 3 });
+    save(); renderList();
+    api.log("tune", { source });
+  }
+
+  // ---- sidebar ----
+  function renderList() {
+    const st = stations[idx];
+    document.querySelectorAll("#modes .chip").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
+    document.querySelectorAll("#styles .chip").forEach((b) => {
+      b.classList.toggle("on", b.dataset.style === style);
+      b.disabled = b.dataset.style === "pixel" && !canPixel(st);
+    });
+    if (!side.classList.contains("open")) return;
+    const pool = new Set(eligible()), now = new Date(), list = $("#list");
+    list.replaceChildren(...stations.map((s, i) => {
+      const ph = phase(s, now), dead = isOffline(s);
+      const row = document.createElement("div");
+      row.className = "st" + (i === idx ? " cur" : "") + (i === sel ? " sel" : "")
+        + (pool.has(i) && !dead ? "" : " muted") + (dead ? " dead" : "");
+      const name = document.createElement("div"); name.className = "name"; name.textContent = s.name;
+      const sub = document.createElement("div"); sub.className = "sub";
+      sub.textContent = [s.city || s.country, localTime(s, now), dead ? "offline" : ph,
+        isLive(s) && !DEMO ? "live video" : ""].filter(Boolean).join(" · ");
+      const g = document.createElement("div"); g.className = "glyph " + ph; g.textContent = GLYPH[ph];
+      row.append(name, sub, g);
+      row.addEventListener("click", (e) => { e.stopPropagation(); touch(); sel = i; hold(i); });
+      return row;
+    }));
+    list.children[sel]?.scrollIntoView({ block: "nearest" });
+    const left = Math.max(0, Math.round((nextAt - Date.now()) / 1000));
+    let status = mode === "pinned" ? "tuned · holding this station"
+      : `scanning · next station in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+    if (!canPixel(st)) status += " · this player can't be pixelated";
+    if (isLive(st) && st.stream.type === "hls" && !DEMO) status += muted ? " · sound off (M)" : " · sound on (M)";
+    $("#status").textContent = status;
+  }
+  function openSide(open) {
+    side.classList.toggle("open", open);
+    if (open) { touch(); renderList(); api.log("sidebar"); }
+  }
+  function touch() { sidebarUntil = Date.now() + (cfg.sidebar_timeout_seconds || 20) * 1000; }
+
+  function hold(i) {
+    if (mode === "pinned" && i === idx) { setMode("auto"); return; }   // tapping the held station releases it
+    mode = "pinned";
+    tune(i, "hold");
+    api.log("hold");
+  }
+  function setMode(m) {
+    if (m === "pinned") { if (mode !== "pinned") hold(idx); return; }
+    mode = m; nextAt = Date.now() + (cfg.rotate_seconds || 120) * 1000;
+    api.log("mode");
+    if (m === "auto" && !eligible().includes(idx)) tune(step(), "scan");
+    save(); renderList();
+  }
+  function setStyle(s) {
+    style = s; save(); api.log("style");
+    const st = stations[idx];
+    if (shown === vid || shown === pix) presentVideo();   // live video restyles in place
+    else if (shown !== embed) refreshPicture();
+    renderList();
+  }
+  function toggleSound() {
+    muted = !muted; store.set("muted", muted);
+    vid.muted = muted;
+    if (!muted) vid.play().catch(() => {});
+    api.log("sound", { muted });
+    renderList();
+  }
+  document.querySelectorAll("#modes .chip").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); touch(); setMode(b.dataset.mode); }));
+  document.querySelectorAll("#styles .chip").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); touch(); setStyle(b.dataset.style); }));
+
+  // ---- input ----
+  const ALLOWED = { 1: ["escape", "f", "m"], 2: ["escape", "f", "m", "p", " "] };
+  addEventListener("keydown", (e) => {
+    const k = e.key.toLowerCase();
+    if (ALLOWED[level] && !ALLOWED[level].includes(k)) return;
+    let handled = true;
+    if (k === "s" || k === "tab") openSide(!side.classList.contains("open"));
+    else if (k === "arrowup" || k === "arrowdown") {
+      if (!side.classList.contains("open")) openSide(true);
+      sel = (sel + (k === "arrowdown" ? 1 : -1) + stations.length) % stations.length; renderList();
+    }
+    else if (k === "enter") hold(sel);
+    else if (k === "arrowleft" || k === "arrowright") tune(idx + (k === "arrowright" ? 1 : -1), "dial");
+    else if (k === "a") setMode(mode === "auto" ? "all" : "auto");
+    else if (k === "p" || k === " ") { if (canPixel(stations[idx]) || style === "pixel") setStyle(style === "real" ? "pixel" : "real"); }
+    else if (k === "m") toggleSound();
+    else if (k === "f") { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => {}); }
+    else if (k === "escape") openSide(false);
+    else handled = false;
+    if (handled) { e.preventDefault(); touch(); }
+  });
+  side.addEventListener("click", (e) => { e.stopPropagation(); touch(); });
+  addEventListener("click", () => {
+    if (level === 1) return;
+    if (level === 2) { setStyle(style === "real" ? "pixel" : "real"); return; }
+    openSide(!side.classList.contains("open"));
+  });
+  let idleTimer = 0;
+  addEventListener("pointermove", () => {
+    document.body.classList.remove("idle");
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => document.body.classList.add("idle"), 3000);
+  });
+
+  // ---- clock ----
+  setInterval(() => {
+    const now = Date.now();
+    if (mode !== "pinned" && level >= 3 && now >= nextAt) {
+      const next = step();
+      if (next !== idx) tune(next, "scan");
+      else nextAt = now + (cfg.rotate_seconds || 120) * 1000;   // nothing else on the dial
+    }
+    if (side.classList.contains("open")) { if (now > sidebarUntil) openSide(false); else renderList(); }
+  }, 1000);
+
+  // ---- boot ----
+  async function refreshStations() {
+    try {
+      const data = await api.stations();
+      const cur = stations[idx];
+      cfg = data.config || {};
+      let next = level < 3 ? data.stations.slice(0, 1) : data.stations;
+      next = next.map((s) => { const old = stations.find((o) => o.id === s.id); return old ? Object.assign(s, { _liveFailed: old._liveFailed }) : s; });
+      stations = next;
+      const i = stations.findIndex((s) => s.id === cur?.id);
+      if (i >= 0) idx = i;
+      return true;
+    } catch (err) {
+      $("#tuning").textContent = "can't reach the visual radio server — is web.py running?";
+      $("#tuning").style.display = "block";
+      return false;
+    }
+  }
+  (async () => {
+    if (!(await refreshStations()) || !stations.length) return;
+    level = +(qs.get("prototype") || cfg.prototype || 3);
+    if (level < 3) stations = stations.slice(0, 1);
+    document.documentElement.style.setProperty("--bright", cfg.brightness ?? 0.85);
+    style = qs.get("style") || (level === 1 ? "real" : store.get("style", cfg.style || "real"));
+    muted = store.get("muted", true);
+    mode = level < 3 ? "pinned" : store.get("mode", "auto");
+    const pinned = store.get("pinned", null);
+    const pi = stations.findIndex((s) => s.id === pinned);
+    idx = mode === "pinned" && pi >= 0 ? pi : 0;
+    if (mode === "pinned" && pi < 0) mode = level < 3 ? "pinned" : "auto";
+    if (mode === "auto" && !eligible().includes(idx)) idx = step();
+    tune(idx, "boot");
+    setInterval(refreshPicture, (cfg.interval_seconds || 60) * 1000);   // refresh snapshot stations
+    setInterval(refreshStations, 60e3);                                  // offline flags
+  })();
+})();
+</script>
+</body>
+</html>

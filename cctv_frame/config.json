@@ -1,0 +1,26 @@
+{
+  "prototype": 3,
+  "camera_name": "TfL JamCam (used only when playlist.json is missing)",
+  "image_url": "https://s3-eu-west-1.amazonaws.com/jamcams.tfl.gov.uk/00001.06514.jpg",
+  "style": "real",
+  "pixel": {
+    "width": 128,
+    "palette": "city16",
+    "night_palette": "night16",
+    "colors": 16,
+    "dither": "ordered",
+    "dither_strength": 8,
+    "contrast": 1.15,
+    "saturation": 1.25
+  },
+  "rotate_seconds": 120,
+  "interval_seconds": 60,
+  "timeout_seconds": 15,
+  "sidebar_timeout_seconds": 20,
+  "station_id_seconds": 5,
+  "static_seconds": 0.6,
+  "image_scale": 0.92,
+  "brightness": 0.85,
+  "screen_width": null,
+  "screen_height": null
+}
