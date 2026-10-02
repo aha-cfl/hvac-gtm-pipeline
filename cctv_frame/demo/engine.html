@@ -1,0 +1,459 @@
+<title>__TITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: a dark wall, the black-glass frame centred on it, the device's controls beneath or beside it. */
+  :root {
+    color-scheme: dark;
+    --wall: #0c0c0d;
+    --ink: #e6e5df;
+    --dim: #8b8b88;
+    --faint: #4a4a4c;
+    --accent: #e3cf5b;
+    --live: #d24a4a;
+    --glass: #050506;
+    --bezel: #121214;
+    --label: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    --display: "Archivo Narrow", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  }
+  html, body { height: 100%; }
+  body { margin: 0; background: radial-gradient(120% 90% at 50% 30%, #18181a 0%, var(--wall) 60%); color: var(--ink);
+    font-family: var(--display); padding-inline: 16px; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding-block: 28px 40px; display: flex; flex-direction: column; gap: 20px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+  header h1 { margin: 0; font-weight: 600; font-size: clamp(20px, 3vw, 28px); letter-spacing: .02em; text-wrap: balance; }
+  header h1 small { font-family: var(--label); font-weight: 400; font-size: 12px; color: var(--accent); letter-spacing: .12em; margin-right: 10px; vertical-align: 3px; }
+  header p { margin: 0; color: var(--dim); font-size: 15px; max-width: 62ch; }
+
+  /* ---- the object ---- */
+  .device { display: grid; grid-template-columns: 1fr; gap: 18px; align-items: center; }
+  .device.side { grid-template-columns: 1fr auto; }
+  .frame { position: relative; background: linear-gradient(145deg, #1c1c1f, #0b0b0c 55%, #151517); padding: 3.2%;
+    border-radius: 4px; box-shadow: 0 30px 60px rgba(0,0,0,.6), 0 2px 0 #26262a inset, 0 -2px 0 #000 inset; min-width: 0; }
+  .mat { background: var(--glass); padding: 2.6%; box-shadow: inset 0 0 0 1px #000, inset 0 6px 18px rgba(0,0,0,.9); }
+  .screen { position: relative; aspect-ratio: 16 / 9; background: #000; overflow: hidden; cursor: pointer; }
+  .screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #scr { filter: brightness(.88); }
+  #scr.pixel { image-rendering: pixelated; }
+  .screen.vintage #scr { filter: sepia(.5) saturate(.75) contrast(1.12) brightness(.82) blur(.35px); }
+  .vignette, .scan { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .4s; }
+  .vignette { background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.75) 100%); }
+  .scan { background: repeating-linear-gradient(to bottom, rgba(0,0,0,.22) 0 1px, rgba(0,0,0,0) 1px 3px); }
+  .screen.vintage .vignette, .screen.vintage .scan { opacity: 1; }
+  .sheen { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,0) 32%, rgba(255,255,255,0) 70%, rgba(255,255,255,.03) 100%); }
+  #noise { image-rendering: pixelated; opacity: 0; transition: opacity .12s; }
+  #noise.on { opacity: 1; }
+  #noise.faint { opacity: .35; }
+  .stamp { position: absolute; right: 2.2%; bottom: 3%; font-family: var(--label); font-size: clamp(8px, 1.25vw, 12px); color: rgba(240,240,232,.78); letter-spacing: .06em; text-shadow: 0 1px 1px #000; pointer-events: none; }
+  .stamp .rec { color: var(--live); }
+  .ident { position: absolute; left: 4.5%; bottom: 8%; opacity: 0; transition: opacity .9s; pointer-events: none; text-shadow: 0 1px 3px #000, 0 2px 10px #000; }
+  .ident.on { opacity: 1; transition: opacity .25s; }
+  .ident .city { font-size: clamp(18px, 4.2vw, 40px); letter-spacing: .05em; font-weight: 600; }
+  .ident .sub { font-family: var(--label); font-size: clamp(9px, 1.35vw, 13px); color: #b9b9b4; margin-top: 4px; }
+  .screen.off #scr, .screen.off .stamp, .screen.off .ident { visibility: hidden; }
+  .crt { position: absolute; inset: 0; pointer-events: none; background: #fff; opacity: 0; }
+  .crt.on { animation: crt-on .9s ease-out forwards; }
+  .crt.offanim { animation: crt-off .55s ease-in forwards; }
+  @keyframes crt-on { 0% { opacity: 1; transform: scale(0.02, 0.004); } 35% { opacity: 1; transform: scale(1, 0.006); } 70% { opacity: .85; transform: scale(1, 1); } 100% { opacity: 0; transform: scale(1, 1); } }
+  @keyframes crt-off { 0% { opacity: .9; transform: scale(1, 1); } 45% { opacity: 1; transform: scale(1, .006); } 100% { opacity: 0; transform: scale(.01, .004); } }
+  .mapover { position: absolute; left: 3%; right: 3%; bottom: 4%; opacity: 0; transition: opacity .35s; pointer-events: none; }
+  .mapover.on { opacity: 1; pointer-events: auto; }
+
+  /* ---- controls ---- */
+  .panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px 22px;
+    background: linear-gradient(180deg, #141416, #0e0e10); border: 1px solid #222226; border-radius: 6px; padding: 16px; }
+  .side .panel { flex-direction: column; flex-wrap: nowrap; padding: 18px 14px; gap: 18px; align-self: stretch; justify-content: center; }
+  .group { display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; }
+  .group .cap { font-family: var(--label); font-size: 10px; letter-spacing: .14em; color: var(--dim); }
+  .btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .side .btns { flex-direction: column; }
+  button.hw { font: 500 11px var(--label); letter-spacing: .1em; color: var(--dim); background: linear-gradient(180deg, #232327, #18181b);
+    border: 1px solid #2c2c31; border-bottom-color: #0a0a0b; border-radius: 4px; padding: 9px 12px; cursor: pointer; min-width: 64px;
+    box-shadow: 0 2px 0 #050506; transition: color .15s, transform .05s; }
+  button.hw:active { transform: translateY(1px); box-shadow: 0 1px 0 #050506; }
+  button.hw.on { color: var(--ink); box-shadow: 0 2px 0 #050506, inset 0 -2px 0 var(--accent); }
+  button.hw:focus-visible, .knob:focus-visible, #map:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .knob { width: 96px; height: 96px; touch-action: none; cursor: grab; border-radius: 50%; }
+  .knob:active { cursor: grabbing; }
+  .led { width: 8px; height: 8px; border-radius: 50%; background: #3a1414; box-shadow: 0 0 0 1px #000; }
+  .led.on { background: #ff5a4a; box-shadow: 0 0 8px #ff5a4a; }
+  .console { display: flex; flex-wrap: wrap; gap: 18px; align-items: stretch; }
+  .console .dialwin { flex: 1.4 1 340px; }
+  .console .panel { flex: 1 1 280px; }
+  .dialwin { background: #050506; border: 1px solid #222226; border-radius: 4px; padding: 8px; width: 100%; box-sizing: border-box; }
+  #map { width: 100%; height: auto; display: block; image-rendering: pixelated; cursor: pointer; }
+  .band { display: flex; justify-content: space-between; font-family: var(--label); font-size: 10px; color: var(--faint); padding: 4px 2px 0; letter-spacing: .08em; }
+  .note { font-family: var(--label); font-size: 11.5px; color: var(--dim); line-height: 1.6; max-width: 80ch; }
+  .note b { color: var(--ink); font-weight: 500; }
+  .keys { color: var(--faint); }
+  @media (max-width: 760px) {
+    .device.side { grid-template-columns: 1fr; }
+    .side .panel { flex-direction: row; flex-wrap: wrap; }
+    .side .btns { flex-direction: row; }
+    .knob { width: 80px; height: 80px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .crt.on, .crt.offanim { animation-duration: .01s; } .ident, #noise { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1><small>__TAG__</small>__HEADING__</h1>
+    <p>__LEDE__</p>
+  </header>
+
+  <div class="device" id="device">
+    <div class="frame">
+      <div class="mat">
+        <div class="screen" id="screen" tabindex="0" aria-label="Visual radio screen">
+          <canvas id="scr" width="960" height="540"></canvas>
+          <div class="vignette"></div><div class="scan"></div>
+          <div class="stamp" id="stamp"></div>
+          <div class="ident" id="ident"><div class="city"></div><div class="sub"></div></div>
+          <canvas id="noise" width="160" height="90"></canvas>
+          <div class="mapover" id="mapover"></div>
+          <div class="crt" id="crt"></div>
+          <div class="sheen"></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel" id="panel" hidden></div>
+  </div>
+
+  <div class="dialwin" id="dialwin" hidden>
+    <canvas id="map" width="720" height="360" tabindex="0" aria-label="World dial: click a lit city to tune"></canvas>
+    <div class="band"><span>180°W</span><span>90°W</span><span>0°</span><span>90°E</span><span>180°E</span></div>
+  </div>
+
+  <p class="note" id="note"></p>
+</div>
+
+<script>
+window.VR = __DATA__;
+</script>
+<script>
+(() => {
+  "use strict";
+  const V = window.VR, L = V.level;
+  const $ = (s) => document.querySelector(s);
+  const screen = $("#screen"), scr = $("#scr"), ctx = scr.getContext("2d", { willReadFrequently: true });
+  const noiseC = $("#noise"), nctx = noiseC.getContext("2d");
+  const W = scr.width, H = scr.height;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---------- sun + local time (NOAA approximation, same as sun.py) ----------
+  const RAD = Math.PI / 180;
+  function elevation(lat, lng, d) {
+    const h = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+    const doy = Math.floor((d - Date.UTC(d.getUTCFullYear(), 0, 1)) / 864e5) + 1;
+    const g = 2 * Math.PI / 365 * (doy - 1 + (h - 12) / 24);
+    const eq = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));
+    const de = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g) - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
+    const ha = ((h * 60 + eq + 4 * lng) / 4 - 180) * RAD, la = lat * RAD;
+    const c = Math.sin(la) * Math.sin(de) + Math.cos(la) * Math.cos(de) * Math.cos(ha);
+    return 90 - Math.acos(Math.max(-1, Math.min(1, c))) / RAD;
+  }
+  const phase = (s, d = new Date()) => { const e = elevation(s.lat, s.lng, d); return e >= 6 ? "day" : e >= -4 ? "dusk" : "night"; };
+  const fmt = (tz, o) => new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour12: false, ...o }).format(new Date());
+
+  // ---------- stations ----------
+  const S = V.stations;
+  for (const s of S) for (const v of s.views) { v.im = new Image(); v.im.src = v.img; v.seed = Math.random() * 1000; }
+  let si = 0, vi = 0;
+  let style = "real", mode = L >= 3 ? "scan" : "hold", power = true;
+  const cur = () => S[si], view = () => S[si].views[vi];
+
+  // ---------- picture: a continuous stream from a still capture ----------
+  // Slow camera drift + sensor grain + a ticking burned-in timestamp, so the frame never sits still.
+  const grain = [0, 1, 2].map(() => {
+    const c = document.createElement("canvas"); c.width = 240; c.height = 135;
+    const g = c.getContext("2d"), d = g.createImageData(240, 135);
+    for (let i = 0; i < d.data.length; i += 4) { const v = Math.random() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; }
+    g.putImageData(d, 0, 0); return c;
+  });
+  function drawView(t) {
+    const v = view(), im = v.im;
+    if (!im.complete || !im.naturalWidth) return;
+    const drift = reduce ? 0 : 1;
+    const z = 1.07 + 0.025 * Math.sin(t / 11000 + v.seed) * drift;
+    const ar = W / H, iar = im.naturalWidth / im.naturalHeight;
+    let sw = iar > ar ? im.naturalHeight * ar : im.naturalWidth, sh = iar > ar ? im.naturalHeight : im.naturalWidth / ar;
+    sw /= z; sh /= z;
+    const sx = (im.naturalWidth - sw) / 2 + Math.sin(t / 17000 + v.seed * 2) * (im.naturalWidth - sw) / 2 * drift;
+    const sy = (im.naturalHeight - sh) / 2 + Math.cos(t / 13000 + v.seed) * (im.naturalHeight - sh) / 2 * drift;
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(im, sx, sy, sw, sh, 0, 0, W, H);
+    ctx.globalAlpha = style === "vintage" ? 0.13 : 0.05;
+    ctx.globalCompositeOperation = "overlay";
+    ctx.drawImage(grain[(t / 60 | 0) % 3], 0, 0, W, H);
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+  }
+
+  // pixel art, same steps as pixelate.py: contrast, saturation, Bayer dither, 16-colour palette
+  const small = document.createElement("canvas"), sctx = small.getContext("2d", { willReadFrequently: true });
+  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  const PAL = {}; for (const k in V.palettes) PAL[k] = V.palettes[k].map((h) => [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]);
+  const LUT = {};
+  function nearest(name, r, g, b) {
+    const lut = LUT[name] || (LUT[name] = new Int8Array(32768).fill(-1));
+    const k = (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3);
+    if (lut[k] >= 0) return lut[k];
+    let best = 1e9, bi = 0;
+    PAL[name].forEach((p, j) => { const d = (p[0] - r) ** 2 + (p[1] - g) ** 2 + (p[2] - b) ** 2; if (d < best) { best = d; bi = j; } });
+    return (lut[k] = bi);
+  }
+  function pixelate() {
+    const aw = 128, ah = 72; small.width = aw; small.height = ah;
+    sctx.imageSmoothingEnabled = true; sctx.imageSmoothingQuality = "high";
+    sctx.drawImage(scr, 0, 0, aw, ah);
+    const img = sctx.getImageData(0, 0, aw, ah), d = img.data;
+    const pname = phase(cur()) === "night" ? "night16" : "city16", pal = PAL[pname];
+    let mean = 0; for (let i = 0; i < d.length; i += 4) mean += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    mean /= aw * ah;
+    for (let y = 0, i = 0; y < ah; y++) for (let x = 0; x < aw; x++, i += 4) {
+      let r = mean + (d[i] - mean) * 1.15, g = mean + (d[i + 1] - mean) * 1.15, b = mean + (d[i + 2] - mean) * 1.15;
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b, off = (BAYER[(y & 3) * 4 + (x & 3)] / 15 - 0.5) * 16;
+      r = lum + (r - lum) * 1.25 + off; g = lum + (g - lum) * 1.25 + off; b = lum + (b - lum) * 1.25 + off;
+      const p = pal[nearest(pname, Math.max(0, Math.min(255, r | 0)), Math.max(0, Math.min(255, g | 0)), Math.max(0, Math.min(255, b | 0)))];
+      d[i] = p[0]; d[i + 1] = p[1]; d[i + 2] = p[2];
+    }
+    sctx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(small, 0, 0, W, H);
+  }
+
+  let lastPx = 0;
+  function frame(t) {
+    requestAnimationFrame(frame);
+    if (!power) return;
+    if (style === "pixel") {
+      if (t - lastPx < 1000 / 12) return;   // sprite art at ~12 fps
+      lastPx = t; drawView(t); pixelate();
+    } else drawView(t);
+  }
+  requestAnimationFrame(frame);
+
+  function stampTick() {
+    const s = cur();
+    $("#stamp").innerHTML = `<span class="rec">● REC</span>&nbsp; CAM ${String(si + 1).padStart(2, "0")}-${vi + 1}&nbsp; ${fmt(s.tz, { year: "numeric", month: "2-digit", day: "2-digit" }).split("/").reverse().join("-")} ${fmt(s.tz, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+  }
+  setInterval(stampTick, 1000);
+
+  // ---------- static, station ID, power ----------
+  let staticOn = false;
+  function noise() {
+    if (!staticOn) return;
+    const d = nctx.createImageData(160, 90);
+    for (let i = 0; i < d.data.length; i += 4) { const v = Math.pow(Math.random(), 2.1) * 170; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; }
+    nctx.putImageData(d, 0, 0);
+    requestAnimationFrame(noise);
+  }
+  function hiss(ms, faint = false) {
+    noiseC.classList.toggle("faint", faint); noiseC.classList.add("on");
+    if (!staticOn) { staticOn = true; noise(); }
+    sound.hiss(ms, faint);
+    return new Promise((r) => setTimeout(() => { noiseC.classList.remove("on", "faint"); staticOn = false; r(); }, ms));
+  }
+  let identT = 0;
+  function ident() {
+    const s = cur(), v = view(), ph = phase(s);
+    $("#ident .city").textContent = s.city.toUpperCase();
+    const bits = [v.name, fmt(s.tz, { hour: "2-digit", minute: "2-digit" }), ph];
+    if (L >= 4 && s.views.length > 1) bits.push(`view ${vi + 1}/${s.views.length}`);
+    $("#ident .sub").textContent = bits.join(" · ");
+    $("#ident").classList.add("on");
+    clearTimeout(identT); identT = setTimeout(() => $("#ident").classList.remove("on"), 4500);
+  }
+  let tuning = false;
+  async function tune(nsi, nvi = 0, why = "dial") {
+    if (!power || tuning && why !== "dial") return;
+    tuning = true;
+    $("#ident").classList.remove("on");
+    const p = hiss(reduce ? 120 : 650);
+    setTimeout(() => { si = (nsi + S.length) % S.length; vi = nvi; stampTick(); drawMap(); syncButtons(); }, reduce ? 40 : 280);
+    await p; tuning = false; ident(); armTimer();
+  }
+  async function powerOn() {
+    power = true; screen.classList.remove("off"); $("#crt").className = "crt on"; led(true);
+    await new Promise((r) => setTimeout(r, reduce ? 20 : 550));
+    await hiss(reduce ? 100 : 500); ident(); armTimer();
+  }
+  async function powerOff() {
+    $("#ident").classList.remove("on"); $("#crt").className = "crt offanim"; led(false);
+    await new Promise((r) => setTimeout(r, reduce ? 20 : 450));
+    power = false; screen.classList.add("off"); clearTimeout(modeT);
+  }
+  // an occasional weak-signal moment, so you see the frame hold the station instead of dropping it
+  (function dropout() {
+    setTimeout(async () => { if (power && !tuning && !reduce) await hiss(300 + Math.random() * 400, true); dropout(); }, 45000 + Math.random() * 60000);
+  })();
+
+  // ---------- modes: scan (daylight first), shuffle (any city, any angle), hold ----------
+  let modeT = 0;
+  function armTimer() {
+    clearTimeout(modeT);
+    if (mode === "hold" || L < 3) return;
+    modeT = setTimeout(() => {
+      if (mode === "shuffle") {
+        let n = si, m = vi;
+        for (let k = 0; k < 8 && n === si && m === vi; k++) { n = Math.floor(Math.random() * S.length); m = L >= 4 ? Math.floor(Math.random() * S[n].views.length) : 0; }
+        tune(n, m, "shuffle");
+      } else {
+        const lit = S.map((s, i) => i).filter((i) => phase(S[i]) !== "night");
+        const pool = lit.length > 1 ? lit : S.map((s, i) => i);
+        const next = pool[(pool.indexOf(si) + 1) % pool.length] ?? pool[0];
+        if (next !== si) tune(next, 0, "scan"); else armTimer();
+      }
+    }, mode === "shuffle" ? V.shuffleMs : V.scanMs);
+  }
+
+  // ---------- sound (off until you switch it on: browsers block audio before a click) ----------
+  const sound = (() => {
+    let ac = null, on = false;
+    function burst(ms, gain) {
+      if (!on || !ac) return;
+      const len = Math.max(1, Math.floor(ac.sampleRate * ms / 1000)), buf = ac.createBuffer(1, len, ac.sampleRate), ch = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / len * 0.6);
+      const src = ac.createBufferSource(), g = ac.createGain(), f = ac.createBiquadFilter();
+      f.type = "bandpass"; f.frequency.value = 2400; f.Q.value = 0.6; g.gain.value = gain;
+      src.buffer = buf; src.connect(f).connect(g).connect(ac.destination); src.start();
+    }
+    return {
+      toggle() { on = !on; if (on && !ac) ac = new (window.AudioContext || window.webkitAudioContext)(); return on; },
+      hiss(ms, faint) { burst(ms, faint ? 0.02 : 0.06); },
+      tick() { burst(14, 0.12); },
+      get on() { return on; },
+    };
+  })();
+
+  // ---------- world dial (minimap): 2° land grid, live day/night shading, lit city markers ----------
+  const map = $("#map"), mctx = map.getContext("2d");
+  const land = V.world.map((row) => row.split("").map(Number));
+  const order = S.map((s, i) => i).sort((a, b) => S[a].lng - S[b].lng);   // the dial runs west -> east
+  function drawMap() {
+    if (L < 4) return;
+    const cw = map.width / 180, ch = map.height / 90, now = new Date();
+    mctx.fillStyle = "#050506"; mctx.fillRect(0, 0, map.width, map.height);
+    for (let r = 0; r < 90; r++) for (let c = 0; c < 180; c++) {
+      if (!land[r][c]) continue;
+      const lat = 89 - r * 2, lng = -179 + c * 2, e = elevation(lat, lng, now);
+      mctx.fillStyle = e > 0 ? "#4d5a52" : e > -6 ? "#2f3734" : "#1a1e1f";
+      mctx.fillRect(c * cw, r * ch, cw - 0.6, ch - 0.6);
+    }
+    const s = cur(), x = (s.lng + 180) / 360 * map.width;
+    mctx.fillStyle = "rgba(227,207,91,.18)"; mctx.fillRect(x - 1, 0, 2, map.height);       // the needle
+    S.forEach((st, i) => {
+      const px = (st.lng + 180) / 360 * map.width, py = (90 - st.lat) / 180 * map.height, isCur = i === si;
+      mctx.fillStyle = isCur ? "#e3cf5b" : phase(st, now) === "night" ? "#9aa3c4" : "#f2e6c0";
+      mctx.fillRect(px - (isCur ? 4 : 3), py - (isCur ? 4 : 3), isCur ? 8 : 6, isCur ? 8 : 6);
+      if (isCur) { mctx.strokeStyle = "rgba(227,207,91,.6)"; mctx.strokeRect(px - 8, py - 8, 16, 16); }
+      mctx.font = "500 15px IBM Plex Mono, monospace"; mctx.fillStyle = isCur ? "#e3cf5b" : "#a9a9a4";
+      mctx.fillText(st.city.toUpperCase(), px + 10, py + 5);
+    });
+  }
+  map.addEventListener("click", (e) => {
+    const r = map.getBoundingClientRect(), mx = (e.clientX - r.left) / r.width * map.width, my = (e.clientY - r.top) / r.height * map.height;
+    let best = -1, bd = 1e9;
+    S.forEach((st, i) => { const d = Math.hypot((st.lng + 180) / 360 * map.width - mx, (90 - st.lat) / 180 * map.height - my); if (d < bd) { bd = d; best = i; } });
+    if (best >= 0 && bd < 60) { e.stopPropagation(); if (best !== si) tune(best, 0, "map"); }
+  });
+  setInterval(drawMap, 60000);
+
+  // ---------- knob: drag to turn, one detent per 24°, wheel and arrow keys too ----------
+  function makeKnob() {
+    const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 100 100"); svg.setAttribute("class", "knob"); svg.setAttribute("tabindex", "0");
+    svg.setAttribute("role", "slider"); svg.setAttribute("aria-label", "Tuning knob");
+    svg.innerHTML = `<defs><radialGradient id="kg" cx="40%" cy="35%"><stop offset="0" stop-color="#3a3a3f"/><stop offset="1" stop-color="#121214"/></radialGradient></defs>
+      <circle cx="50" cy="50" r="48" fill="#08080a"/>
+      ${Array.from({ length: 15 }, (_, i) => { const a = (i * 24 - 90) * RAD; return `<line x1="${50 + 44 * Math.cos(a)}" y1="${50 + 44 * Math.sin(a)}" x2="${50 + 47 * Math.cos(a)}" y2="${50 + 47 * Math.sin(a)}" stroke="#3a3a3e" stroke-width="1.2"/>`; }).join("")}
+      <g id="kr"><circle cx="50" cy="50" r="38" fill="url(#kg)" stroke="#2b2b30"/>
+      ${Array.from({ length: 36 }, (_, i) => { const a = i * 10 * RAD; return `<line x1="${50 + 34 * Math.cos(a)}" y1="${50 + 34 * Math.sin(a)}" x2="${50 + 38 * Math.cos(a)}" y2="${50 + 38 * Math.sin(a)}" stroke="#1d1d21" stroke-width="1.4"/>`; }).join("")}
+      <line x1="50" y1="18" x2="50" y2="30" stroke="#e3cf5b" stroke-width="3" stroke-linecap="round"/></g>`;
+    let rot = 0, acc = 0, drag = null;
+    const rg = () => svg.querySelector("#kr");
+    const turn = (deg) => {
+      rot += deg; acc += deg; rg().setAttribute("transform", `rotate(${rot} 50 50)`);
+      while (Math.abs(acc) >= 24) { const dir = Math.sign(acc); acc -= dir * 24; sound.tick(); step(dir); }
+    };
+    const ang = (e) => { const r = svg.getBoundingClientRect(); return Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)) / RAD; };
+    svg.addEventListener("pointerdown", (e) => { drag = ang(e); svg.setPointerCapture(e.pointerId); e.stopPropagation(); });
+    svg.addEventListener("pointermove", (e) => { if (drag === null) return; const a = ang(e); let d = a - drag; if (d > 180) d -= 360; if (d < -180) d += 360; drag = a; turn(d); });
+    svg.addEventListener("pointerup", () => { drag = null; });
+    svg.addEventListener("wheel", (e) => { e.preventDefault(); turn(e.deltaY > 0 ? 24 : -24); }, { passive: false });
+    svg.addEventListener("keydown", (e) => { if (e.key === "ArrowRight" || e.key === "ArrowUp") { turn(24); e.preventDefault(); } if (e.key === "ArrowLeft" || e.key === "ArrowDown") { turn(-24); e.preventDefault(); } });
+    svg.addEventListener("click", (e) => e.stopPropagation());
+    return svg;
+  }
+  let mapT = 0;
+  function step(dir) {
+    if (L >= 4) {            // the dial is a band of longitudes: turning moves east / west
+      const k = order.indexOf(si); tune(order[(k + dir + order.length) % order.length], 0, "dial");
+      if (L >= 5) { $("#mapover").classList.add("on"); clearTimeout(mapT); mapT = setTimeout(() => $("#mapover").classList.remove("on"), 4000); }
+    } else tune(si + dir, 0, "dial");
+    if (mode === "shuffle" || mode === "scan") { mode = "hold"; syncButtons(); }   // touching the dial takes control
+  }
+
+  // ---------- buttons ----------
+  const panel = $("#panel"), btn = {};
+  function group(cap, items) {
+    const g = document.createElement("div"); g.className = "group";
+    const b = document.createElement("div"); b.className = "btns";
+    for (const [key, label, fn] of items) {
+      const el = document.createElement("button"); el.className = "hw"; el.type = "button"; el.textContent = label; el.id = "b-" + key;
+      el.addEventListener("click", (e) => { e.stopPropagation(); fn(); }); btn[key] = el; b.append(el);
+    }
+    const c = document.createElement("div"); c.className = "cap"; c.textContent = cap;
+    g.append(b, c); return g;
+  }
+  function setStyle(s) { style = s; screen.classList.toggle("vintage", s === "vintage"); scr.classList.toggle("pixel", s === "pixel"); syncButtons(); }
+  function setMode(m) { mode = m; syncButtons(); if (m === "hold") clearTimeout(modeT); else armTimer(); }
+  function nextAngle() { const s = cur(); if (s.views.length > 1) tune(si, (vi + 1) % s.views.length, "angle"); }
+  let ledEl = null; const led = (on) => ledEl && ledEl.classList.toggle("on", on);
+  function syncButtons() {
+    for (const s of ["real", "pixel", "vintage"]) btn[s] && btn[s].classList.toggle("on", style === s);
+    for (const m of ["scan", "shuffle", "hold"]) btn[m] && btn[m].classList.toggle("on", mode === m);
+    if (btn.angle) btn.angle.textContent = `ANGLE ${vi + 1}/${cur().views.length}`;
+    if (btn.sound) btn.sound.classList.toggle("on", sound.on);
+  }
+
+  if (L >= 2) {
+    panel.hidden = false;
+    if (L >= 5) { $("#device").classList.add("side"); const pw = document.createElement("div"); pw.className = "group";
+      ledEl = document.createElement("div"); ledEl.className = "led on";
+      const b = document.createElement("button"); b.className = "hw"; b.type = "button"; b.textContent = "POWER"; b.id = "b-power";
+      b.addEventListener("click", (e) => { e.stopPropagation(); power ? powerOff() : powerOn(); });
+      const c = document.createElement("div"); c.className = "cap"; c.textContent = "POWER";
+      pw.append(ledEl, b); panel.append(pw); }
+    if (L >= 3) { const g = document.createElement("div"); g.className = "group"; g.append(makeKnob());
+      const c = document.createElement("div"); c.className = "cap"; c.textContent = L >= 4 ? "TUNE · WEST ↔ EAST" : "TUNE"; g.append(c); panel.append(g); }
+    panel.append(group("STYLE", [["real", "REAL", () => setStyle("real")], ["pixel", "PIXEL", () => setStyle("pixel")], ["vintage", "VINTAGE", () => setStyle("vintage")]]));
+    if (L >= 3) panel.append(group("MODE", [["scan", "SCAN ☀", () => setMode("scan")], ["shuffle", "SHUFFLE", () => setMode("shuffle")], ["hold", "HOLD", () => setMode("hold")]]));
+    if (L >= 4) panel.append(group("VIEW", [["angle", "ANGLE 1/1", nextAngle]]));
+    if (L >= 3) panel.append(group("SOUND", [["sound", "STATIC FX", () => { sound.toggle(); syncButtons(); }]]));
+  }
+  if (L === 4) {                 // the dial window sits beside the controls, under the glass
+    const con = document.createElement("div"); con.className = "console";
+    $("#dialwin").hidden = false; con.append($("#dialwin"), panel); $("#device").append(con);
+  }
+  if (L >= 5) { $("#mapover").append(map); map.style.opacity = ".92"; }
+
+  // keyboard: ←/→ tune, ↑ angle, P style, S shuffle, H hold, M map
+  addEventListener("keydown", (e) => {
+    if (e.target.closest && e.target.closest(".knob")) return;
+    const k = e.key.toLowerCase();
+    if (L >= 3 && (k === "arrowright" || k === "arrowleft")) { step(k === "arrowright" ? 1 : -1); e.preventDefault(); }
+    else if (L >= 4 && k === "arrowup") { nextAngle(); e.preventDefault(); }
+    else if (L >= 2 && k === "p") setStyle({ real: "pixel", pixel: "vintage", vintage: "real" }[style]);
+    else if (L >= 3 && k === "s") setMode(mode === "shuffle" ? "hold" : "shuffle");
+    else if (L >= 3 && k === "h") setMode("hold");
+    else if (L >= 5 && k === "m") $("#mapover").classList.toggle("on");
+  });
+  // tapping the screen replays the tune-in, so the transition can be watched again
+  screen.addEventListener("click", () => { if (!power) return; if (L >= 5 && $("#mapover").classList.contains("on")) return; tune(si, vi, "tap"); });
+
+  $("#note").innerHTML = V.note;
+  syncButtons(); drawMap(); stampTick();
+  screen.classList.add("off"); setTimeout(powerOn, 350);
+})();
+</script>
